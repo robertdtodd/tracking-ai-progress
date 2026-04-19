@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { chatWithBundle } from '@/lib/claude'
-import { articles } from '@/lib/articles'
+import { getAllArticles } from '@/lib/getAllArticles'
 
 export const maxDuration = 60
 
@@ -23,7 +23,7 @@ export async function POST(
   })
 
   if (!bundle) {
-    return NextResponse.json({ error: 'Bundle not found' }, { status: 404 })
+    return NextResponse.json({ error: 'Theme not found' }, { status: 404 })
   }
 
   const history = bundle.messages.map((m) => ({
@@ -31,12 +31,14 @@ export async function POST(
     content: m.content,
   }))
 
+  const allArticles = await getAllArticles()
+
   const { assistantMessage, updatedContent } = await chatWithBundle(
     bundle.course.name,
     bundle.title,
     bundle.generatedContent,
     bundle.articleTitles,
-    articles,
+    allArticles,
     history,
     message,
   )

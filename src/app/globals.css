@@ -505,6 +505,12 @@ textarea:focus {
   color: var(--text-secondary);
 }
 
+.content-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .content-box {
   padding: 16px 20px;
   background: var(--bg-tertiary);
@@ -512,8 +518,52 @@ textarea:focus {
   border-radius: var(--radius-lg);
   font-size: 14px;
   line-height: 1.65;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  resize: vertical;
+  min-height: 320px;
+  width: 100%;
+  font-family: inherit;
+}
+
+.content-save-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.add-article-form {
+  margin: 0 16px 4px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border-1);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.add-article-form input[type='text'],
+.add-article-form input[type='date'] {
+  font-size: 12px;
+  padding: 6px 10px;
+  height: 30px;
+  width: 100%;
+}
+
+.delete-theme-btn {
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.delete-theme-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .chat {

@@ -11,6 +11,8 @@ interface Props {
 export default function BundleDetail({ bundle, onUpdated }: Props) {
   const [messages, setMessages] = useState<Message[]>(bundle.messages)
   const [content, setContent] = useState(bundle.generatedContent)
+  const [isDirty, setIsDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
@@ -18,11 +20,29 @@ export default function BundleDetail({ bundle, onUpdated }: Props) {
   useEffect(() => {
     setMessages(bundle.messages)
     setContent(bundle.generatedContent)
+    setIsDirty(false)
   }, [bundle.id])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
+
+  async function handleSaveContent() {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/bundles/${bundle.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generatedContent: content }),
+      })
+      if (res.ok) {
+        setIsDirty(false)
+        onUpdated({ ...bundle, generatedContent: content })
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function handleSend() {
     const text = input.trim()
@@ -76,6 +96,7 @@ export default function BundleDetail({ bundle, onUpdated }: Props) {
         return [...withoutOptimistic, ...newMessages]
       })
       setContent(updatedContent)
+      setIsDirty(false)
       onUpdated({
         ...bundle,
         generatedContent: updatedContent,
@@ -103,13 +124,35 @@ export default function BundleDetail({ bundle, onUpdated }: Props) {
         </div>
       </div>
 
-      <div className="content-box">{content}</div>
+      <div className="content-area">
+        <textarea
+          className="content-box"
+          value={content}
+          onChange={(e) => {
+            setContent(e.target.value)
+            setIsDirty(true)
+          }}
+        />
+        {isDirty && (
+          <div className="content-save-bar">
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Unsaved changes</span>
+            <button
+              className="primary"
+              style={{ fontSize: 12, padding: '4px 12px' }}
+              onClick={handleSaveContent}
+              disabled={saving}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="chat">
         <div className="chat-messages">
           {messages.length === 0 ? (
             <div style={{ color: 'var(--text-secondary)', fontSize: 12, textAlign: 'center' }}>
-              Ask Claude to refine this content. Try: "Tighten the intro", "Add more on cybersecurity", or "Turn the questions into a worksheet".
+              Ask Claude to refine this content, or edit the text above directly. Try: "Tighten the intro", "Add more on cybersecurity", or "Turn the questions into a worksheet".
             </div>
           ) : (
             messages.map((m) => (

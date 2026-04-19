@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { articles, themeConfig, Article } from '@/lib/articles'
+import { useEffect, useMemo, useState } from 'react'
+import { articles as staticArticles, themeConfig, Article } from '@/lib/articles'
 
 interface Props {
   selectedTitles: Set<string>
@@ -26,6 +26,8 @@ function fmtDateLong(s: string) {
   return `${DAYS[dt.getDay()]}, ${MONTHS_LONG[m - 1]} ${d}, ${y}`
 }
 
+const TODAY = new Date().toISOString().slice(0, 10)
+
 export default function ArticleBrowser({
   selectedTitles,
   onToggle,
@@ -34,6 +36,7 @@ export default function ArticleBrowser({
   activeCourseId,
   onBundleCreated,
 }: Props) {
+  const [userArticles, setUserArticles] = useState<Article[]>([])
   const [view, setView] = useState('chrono')
   const [search, setSearch] = useState('')
   const [activeThemes, setActiveThemes] = useState<Set<string>>(new Set())
@@ -42,11 +45,32 @@ export default function ArticleBrowser({
   const [generating, setGenerating] = useState(false)
   const [bundleTitle, setBundleTitle] = useState('')
 
+  // Add article form state
+  const [showAddArticle, setShowAddArticle] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newAuthor, setNewAuthor] = useState('')
+  const [newDate, setNewDate] = useState(TODAY)
+  const [newSection, setNewSection] = useState('')
+  const [newThemes, setNewThemes] = useState<string[]>([])
+  const [addingArticle, setAddingArticle] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/articles')
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setUserArticles)
+      .catch(() => {})
+  }, [])
+
+  const allArticles = useMemo(
+    () => [...staticArticles, ...userArticles],
+    [userArticles],
+  )
+
   const { themeCounts, subCounts } = useMemo(() => {
     const tc: Record<string, number> = {}
     const sc: Record<string, number> = {}
     themeConfig.forEach((t) => (tc[t.name] = 0))
-    articles.forEach((a) => {
+    allArticles.forEach((a) => {
       Object.entries(a.th).forEach(([theme, subs]) => {
         tc[theme] = (tc[theme] || 0) + 1
         subs.forEach((sub) => {
@@ -56,10 +80,10 @@ export default function ArticleBrowser({
       })
     })
     return { themeCounts: tc, subCounts: sc }
-  }, [])
+  }, [allArticles])
 
   const filtered = useMemo(() => {
-    return articles.filter((a) => {
+    return allArticles.filter((a) => {
       if (search) {
         const q = search.toLowerCase()
         const hay = (a.t + ' ' + (a.by || '') + ' ' + a.sec).toLowerCase()
@@ -84,15 +108,15 @@ export default function ArticleBrowser({
       }
       return false
     })
-  }, [search, activeThemes, activeSubs])
+  }, [allArticles, search, activeThemes, activeSubs])
 
   const derivedThemes = useMemo(() => {
     const set = new Set<string>()
-    articles
+    allArticles
       .filter((a) => selectedTitles.has(a.t))
       .forEach((a) => Object.keys(a.th).forEach((t) => set.add(t)))
     return Array.from(set)
-  }, [selectedTitles])
+  }, [selectedTitles, allArticles])
 
   async function handleGenerateBundle() {
     if (!activeCourseId || selectedTitles.size === 0) return
@@ -116,6 +140,42 @@ export default function ArticleBrowser({
       onBundleCreated()
     } finally {
       setGenerating(false)
+    }
+  }
+
+  async function handleAddArticle() {
+    if (!newTitle.trim() || !newDate || !newSection.trim()) return
+    setAddingArticle(true)
+    try {
+      const themesObj: Record<string, string[]> = {}
+      newThemes.forEach((t) => (themesObj[t] = []))
+
+      const res = await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          author: newAuthor.trim() || null,
+          date: newDate,
+          section: newSection.trim(),
+          themes: themesObj,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        alert('Failed: ' + (err.error || res.statusText))
+        return
+      }
+      const article: Article = await res.json()
+      setUserArticles((prev) => [article, ...prev])
+      setNewTitle('')
+      setNewAuthor('')
+      setNewDate(TODAY)
+      setNewSection('')
+      setNewThemes([])
+      setShowAddArticle(false)
+    } finally {
+      setAddingArticle(false)
     }
   }
 
@@ -275,9 +335,84 @@ export default function ArticleBrowser({
   return (
     <div className="pane-left">
       <div className="pane-header">
-        <h1>NYT AI articles browser</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h1>NYT AI articles browser</h1>
+          <button
+            style={{ fontSize: 11, padding: '3px 8px', height: 24 }}
+            onClick={() => setShowAddArticle((v) => !v)}
+          >
+            {showAddArticle ? 'Cancel' : '+ Add article'}
+          </button>
+        </div>
         <p className="subtitle">Times Topics: Artificial Intelligence — Feb 28 to Apr 17, 2026</p>
       </div>
+
+      {showAddArticle && (
+        <div className="add-article-form">
+          <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>Add article to library</div>
+          <input
+            type="text"
+            placeholder="Title (required)"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Author (optional)"
+            value={newAuthor}
+            onChange={(e) => setNewAuthor(e.target.value)}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="text"
+              placeholder="Section (e.g. Technology)"
+              value={newSection}
+              onChange={(e) => setNewSection(e.target.value)}
+              style={{ flex: 1 }}
+            />
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 2 }}>
+            Themes (optional):
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+            {themeConfig.map((tc) => (
+              <label key={tc.name} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={newThemes.includes(tc.name)}
+                  onChange={(e) => {
+                    if (e.target.checked) setNewThemes((prev) => [...prev, tc.name])
+                    else setNewThemes((prev) => prev.filter((t) => t !== tc.name))
+                  }}
+                />
+                {tc.name}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className="primary"
+              style={{ fontSize: 12, padding: '6px 12px' }}
+              onClick={handleAddArticle}
+              disabled={addingArticle || !newTitle.trim() || !newSection.trim() || !newDate}
+            >
+              {addingArticle ? 'Adding…' : 'Add article'}
+            </button>
+            <button
+              style={{ fontSize: 12, padding: '6px 12px' }}
+              onClick={() => setShowAddArticle(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="controls">
         <select value={view} onChange={(e) => setView(e.target.value)}>
@@ -371,7 +506,7 @@ export default function ArticleBrowser({
 
       <div className="meta-row">
         <span>
-          {filtered.length} of {articles.length} articles
+          {filtered.length} of {allArticles.length} articles
           {selectedTitles.size > 0 ? ` · ${selectedTitles.size} selected` : ''}
         </span>
         <button
@@ -389,7 +524,7 @@ export default function ArticleBrowser({
       <div className="selection-bar">
         <span className="count">
           {selectedTitles.size === 0
-            ? 'Select articles to build a bundle'
+            ? 'Select articles to build a theme'
             : `${selectedTitles.size} selected`}
         </span>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -400,7 +535,7 @@ export default function ArticleBrowser({
           )}
           <input
             type="text"
-            placeholder="Bundle title (optional)"
+            placeholder="Theme title (optional)"
             value={bundleTitle}
             onChange={(e) => setBundleTitle(e.target.value)}
             style={{ width: 160, height: 30, fontSize: 12 }}
@@ -417,7 +552,7 @@ export default function ArticleBrowser({
                 Generating…
               </>
             ) : (
-              'Generate bundle'
+              'Generate theme'
             )}
           </button>
         </div>

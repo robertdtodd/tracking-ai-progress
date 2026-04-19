@@ -106,6 +106,19 @@ export default function CoursePanel({
     }
   }
 
+  async function handleDeleteBundle(bundleId: string, bundleTitle: string) {
+    if (!confirm(`Delete theme "${bundleTitle}"? This cannot be undone.`)) return
+    const res = await fetch(`/api/bundles/${bundleId}`, { method: 'DELETE' })
+    if (res.ok && course) {
+      const remaining = course.bundles.filter((b) => b.id !== bundleId)
+      setCourse({ ...course, bundles: remaining })
+      if (activeBundleId === bundleId) {
+        setActiveBundleId(remaining.length > 0 ? remaining[remaining.length - 1].id : null)
+      }
+      await fetchCourses()
+    }
+  }
+
   function handleBundleUpdated(updated: Bundle) {
     if (!course) return
     setCourse({
@@ -147,7 +160,7 @@ export default function CoursePanel({
       {!activeCourseId ? (
         <div className="empty-state">
           <h3>No course selected</h3>
-          <p>Create a new course or pick one from the dropdown above, then select articles to the left and generate a bundle.</p>
+          <p>Create a new course or pick one from the dropdown above, then select articles to the left and generate a theme.</p>
         </div>
       ) : loading && !course ? (
         <div className="empty-state">
@@ -158,7 +171,7 @@ export default function CoursePanel({
           <div className="bundle-strip">
             {course.bundles.length === 0 ? (
               <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                No bundles yet. Select articles to the left and click "Generate bundle".
+                No themes yet. Select articles to the left and click "Generate theme".
               </div>
             ) : (
               course.bundles.map((b) => (
@@ -167,7 +180,19 @@ export default function CoursePanel({
                   className={`bundle-card${b.id === activeBundleId ? ' active' : ''}`}
                   onClick={() => setActiveBundleId(b.id)}
                 >
-                  <div className="position">Bundle {b.position + 1}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="position">Theme {b.position + 1}</div>
+                    <button
+                      className="delete-theme-btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteBundle(b.id, b.title)
+                      }}
+                      title="Delete this theme"
+                    >
+                      ×
+                    </button>
+                  </div>
                   <div className="title">{b.title}</div>
                   <div className="meta">
                     {b.articleTitles.length} articles
@@ -183,7 +208,7 @@ export default function CoursePanel({
           ) : (
             <div className="empty-state">
               <h3>{course.name}</h3>
-              <p>Select articles on the left, add a bundle title if you want, and click "Generate bundle".</p>
+              <p>Select articles on the left, add a theme title if you want, and click "Generate theme".</p>
             </div>
           )}
         </>

@@ -27,20 +27,27 @@ export async function generateBundleContent(
   const articleList = formatArticles(articleTitles, allArticles)
   const prompt = `You are creating educational content for an AI literacy course called "${courseName}".
 
-The instructor has assembled this lesson bundle titled "${bundleTitle}". Source material:
+The instructor has assembled this lesson theme titled "${bundleTitle}". Source material:
 
 ${articleList}
 
 ${themes.length ? `Themes emphasized: ${themes.join(', ')}` : ''}
 
-Write a comprehensive lesson synthesis (roughly 800–1200 words) that:
-1. Opens with a compelling framing of why these articles matter together
-2. Identifies and explains 2–4 major themes or tensions across the articles
-3. Highlights specific examples or details that illuminate the key points
-4. Connects these developments to broader patterns in AI's trajectory
-5. Closes with 3–4 discussion questions for classroom conversation
+Write a structured lesson synthesis using these exact section headers:
 
-Use clear section headers (markdown style). This is a synthesis — identify what's interesting about how these articles speak to each other. Do not simply summarize each article.`
+## Overview
+Two to three paragraphs framing why these articles matter together — what central tension, question, or development connects them? This should hook a curious reader.
+
+## Conflicting Points of View
+Present 2–4 genuine, distinct perspectives on the central issue. For each, name who holds that view and why — cite specific articles where you can. Do not strawman any side. The goal is to show that reasonable people disagree, and why.
+
+## Relevant Facts
+10–12 concrete, specific facts drawn directly from these articles. Write each as a single sentence ending with the source in parentheses, like: "OpenAI's revenue exceeded $5 billion in Q1 2026 (NYT, Apr 2)." Prioritize statistics, named people, dates, dollar figures, and specific events over vague claims.
+
+## Discussion Questions
+Five to six open-ended questions for classroom use. Mix factual-recall questions with interpretive and ethical ones. Questions should be discussable — not yes/no, not Google-able.
+
+Use these exact section headers. Draw connections across articles rather than summarizing each one in sequence.`
 
   const message = await anthropic.messages.create({
     model: MODEL,

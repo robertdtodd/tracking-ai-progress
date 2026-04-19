@@ -37,3 +37,13 @@ model Message {
   content   String   @db.Text
   createdAt DateTime @default(now())
 }
+
+model UserArticle {
+  id        String   @id @default(cuid())
+  date      String
+  section   String
+  title     String
+  author    String?
+  themes    Json     @default("{}")
+  createdAt DateTime @default(now())
+}

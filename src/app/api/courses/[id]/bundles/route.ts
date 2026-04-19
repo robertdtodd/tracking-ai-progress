@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { generateBundleContent } from '@/lib/claude'
-import { articles } from '@/lib/articles'
+import { getAllArticles } from '@/lib/getAllArticles'
 
 export const maxDuration = 60
 
@@ -31,14 +31,16 @@ export async function POST(
 
   const finalTitle =
     (bundleTitle && bundleTitle.trim()) ||
-    (themes?.length ? themes.slice(0, 2).join(' + ') : `Bundle ${position + 1}`)
+    (themes?.length ? themes.slice(0, 2).join(' + ') : `Theme ${position + 1}`)
+
+  const allArticles = await getAllArticles()
 
   const generatedContent = await generateBundleContent(
     course.name,
     finalTitle,
     articleTitles,
     themes ?? [],
-    articles,
+    allArticles,
   )
 
   const bundle = await prisma.bundle.create({
