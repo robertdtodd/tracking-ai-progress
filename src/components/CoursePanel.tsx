@@ -71,6 +71,10 @@ export default function CoursePanel({
   const [course, setCourse] = useState<CourseDetail | null>(null)
   const [activeBundleId, setActiveBundleId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
+  const [draftName, setDraftName] = useState('')
+  const [draftDescription, setDraftDescription] = useState('')
+  const [savingInfo, setSavingInfo] = useState(false)
 
   async function fetchCourses() {
     const res = await fetch('/api/courses')
@@ -129,17 +133,36 @@ export default function CoursePanel({
     }
   }
 
-  async function handleEditDescription() {
+  function handleOpenInfo() {
     if (!course) return
-    const next = prompt('Course description (for students):', course.description ?? '')
-    if (next === null) return
-    const res = await fetch(`/api/courses/${course.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: next }),
-    })
-    if (res.ok) {
-      setCourse({ ...course, description: next.trim() || null })
+    setDraftName(course.name)
+    setDraftDescription(course.description ?? '')
+    setInfoOpen(true)
+  }
+
+  function handleCancelInfo() {
+    setInfoOpen(false)
+  }
+
+  async function handleSaveInfo() {
+    if (!course) return
+    const trimmedName = draftName.trim()
+    if (!trimmedName) return
+    setSavingInfo(true)
+    try {
+      const res = await fetch(`/api/courses/${course.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmedName, description: draftDescription }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setCourse({ ...course, name: updated.name, description: updated.description })
+        await fetchCourses()
+        setInfoOpen(false)
+      }
+    } finally {
+      setSavingInfo(false)
     }
   }
 
@@ -186,11 +209,11 @@ export default function CoursePanel({
         <button onClick={handleCreateCourse}>+ New course</button>
         {activeCourseId && (
           <button
-            onClick={handleEditDescription}
+            onClick={handleOpenInfo}
             style={{ color: 'var(--text-secondary)' }}
-            title="Edit course description (shown to students)"
+            title="Edit course name and description"
           >
-            Description
+            Course Info
           </button>
         )}
         {activeCourseId && (
@@ -299,6 +322,43 @@ export default function CoursePanel({
           )}
         </>
       ) : null}
+
+      {infoOpen && course && (
+        <div className="modal-overlay" onClick={handleCancelInfo}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">Course Info</h3>
+            <label className="modal-field">
+              <span className="modal-label">Name</span>
+              <input
+                type="text"
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                autoFocus
+              />
+            </label>
+            <label className="modal-field">
+              <span className="modal-label">Description (shown to students)</span>
+              <textarea
+                value={draftDescription}
+                onChange={(e) => setDraftDescription(e.target.value)}
+                rows={4}
+              />
+            </label>
+            <div className="modal-actions">
+              <button onClick={handleCancelInfo} disabled={savingInfo}>
+                Cancel
+              </button>
+              <button
+                className="primary"
+                onClick={handleSaveInfo}
+                disabled={savingInfo || !draftName.trim()}
+              >
+                {savingInfo ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
