@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import BundleDetail from './BundleDetail'
+import EngagePanel from './EngagePanel'
 
 type CourseSummary = {
   id: string
@@ -14,7 +16,16 @@ export type Message = {
   id: string
   role: string
   content: string
+  mode: string
   createdAt: string
+}
+
+export type Highlight = {
+  id: string
+  anchorText: string
+  color: string
+  note: string | null
+  position: number
 }
 
 export type Bundle = {
@@ -24,12 +35,16 @@ export type Bundle = {
   articleTitles: string[]
   themes: string[]
   generatedContent: string
+  published: boolean
+  publishedAt: string | null
   messages: Message[]
+  highlights: Highlight[]
 }
 
 type CourseDetail = {
   id: string
   name: string
+  description: string | null
   bundles: Bundle[]
 }
 
@@ -37,12 +52,20 @@ interface Props {
   activeCourseId: string | null
   setActiveCourseId: (id: string | null) => void
   refreshTick: number
+  engageOpen: boolean
+  onToggleEngage: () => void
+  presenting: boolean
+  onTogglePresent: () => void
 }
 
 export default function CoursePanel({
   activeCourseId,
   setActiveCourseId,
   refreshTick,
+  engageOpen,
+  onToggleEngage,
+  presenting,
+  onTogglePresent,
 }: Props) {
   const [courses, setCourses] = useState<CourseSummary[]>([])
   const [course, setCourse] = useState<CourseDetail | null>(null)
@@ -106,6 +129,20 @@ export default function CoursePanel({
     }
   }
 
+  async function handleEditDescription() {
+    if (!course) return
+    const next = prompt('Course description (for students):', course.description ?? '')
+    if (next === null) return
+    const res = await fetch(`/api/courses/${course.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: next }),
+    })
+    if (res.ok) {
+      setCourse({ ...course, description: next.trim() || null })
+    }
+  }
+
   async function handleDeleteBundle(bundleId: string, bundleTitle: string) {
     if (!confirm(`Delete theme "${bundleTitle}"? This cannot be undone.`)) return
     const res = await fetch(`/api/bundles/${bundleId}`, { method: 'DELETE' })
@@ -149,12 +186,45 @@ export default function CoursePanel({
         <button onClick={handleCreateCourse}>+ New course</button>
         {activeCourseId && (
           <button
+            onClick={handleEditDescription}
+            style={{ color: 'var(--text-secondary)' }}
+            title="Edit course description (shown to students)"
+          >
+            Description
+          </button>
+        )}
+        {activeCourseId && (
+          <Link
+            href={`/browse/${activeCourseId}`}
+            className="trends-link"
+            title="Open student browse view for this course"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Browse ↗
+          </Link>
+        )}
+        {activeCourseId && (
+          <button
             onClick={handleDeleteCourse}
             style={{ color: 'var(--text-secondary)' }}
           >
             Delete
           </button>
         )}
+        <Link href="/trends" className="trends-link" title="Open thematic trends">
+          Trends →
+        </Link>
+        <button
+          onClick={async () => {
+            await fetch('/api/auth/logout', { method: 'POST' })
+            window.location.href = '/login'
+          }}
+          style={{ color: 'var(--text-secondary)' }}
+          title="Sign out"
+        >
+          Sign out
+        </button>
       </div>
 
       {!activeCourseId ? (
@@ -204,7 +274,23 @@ export default function CoursePanel({
           </div>
 
           {activeBundle ? (
-            <BundleDetail bundle={activeBundle} onUpdated={handleBundleUpdated} />
+            <div className={`bundle-layout${engageOpen ? ' has-engage' : ''}`}>
+              <BundleDetail
+                bundle={activeBundle}
+                engageOpen={engageOpen}
+                onToggleEngage={onToggleEngage}
+                presenting={presenting}
+                onTogglePresent={onTogglePresent}
+                onUpdated={handleBundleUpdated}
+              />
+              {engageOpen && (
+                <EngagePanel
+                  bundle={activeBundle}
+                  onUpdated={handleBundleUpdated}
+                  onClose={onToggleEngage}
+                />
+              )}
+            </div>
           ) : (
             <div className="empty-state">
               <h3>{course.name}</h3>

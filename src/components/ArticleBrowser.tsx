@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { articles as staticArticles, themeConfig, Article } from '@/lib/articles'
+import { themeConfig, Article } from '@/lib/articles'
+import ImportArticlesForm from './ImportArticlesForm'
 
 interface Props {
   selectedTitles: Set<string>
@@ -10,6 +11,7 @@ interface Props {
   onClearSelection: () => void
   activeCourseId: string | null
   onBundleCreated: () => void
+  onCollapse: () => void
 }
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -26,8 +28,6 @@ function fmtDateLong(s: string) {
   return `${DAYS[dt.getDay()]}, ${MONTHS_LONG[m - 1]} ${d}, ${y}`
 }
 
-const TODAY = new Date().toISOString().slice(0, 10)
-
 export default function ArticleBrowser({
   selectedTitles,
   onToggle,
@@ -35,36 +35,48 @@ export default function ArticleBrowser({
   onClearSelection,
   activeCourseId,
   onBundleCreated,
+  onCollapse,
 }: Props) {
   const [userArticles, setUserArticles] = useState<Article[]>([])
   const [view, setView] = useState('chrono')
   const [search, setSearch] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [activeThemes, setActiveThemes] = useState<Set<string>>(new Set())
   const [activeSubs, setActiveSubs] = useState<Set<string>>(new Set())
   const [expandedThemes, setExpandedThemes] = useState<Set<string>>(new Set())
   const [generating, setGenerating] = useState(false)
+  const [elapsedSec, setElapsedSec] = useState(0)
   const [bundleTitle, setBundleTitle] = useState('')
+  const [showImport, setShowImport] = useState(false)
 
-  // Add article form state
-  const [showAddArticle, setShowAddArticle] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
-  const [newAuthor, setNewAuthor] = useState('')
-  const [newDate, setNewDate] = useState(TODAY)
-  const [newSection, setNewSection] = useState('')
-  const [newThemes, setNewThemes] = useState<string[]>([])
-  const [addingArticle, setAddingArticle] = useState(false)
-
-  useEffect(() => {
-    fetch('/api/articles')
+  function refreshUserArticles() {
+    return fetch('/api/articles')
       .then((r) => (r.ok ? r.json() : []))
       .then(setUserArticles)
       .catch(() => {})
+  }
+
+  useEffect(() => {
+    refreshUserArticles()
   }, [])
 
-  const allArticles = useMemo(
-    () => [...staticArticles, ...userArticles],
-    [userArticles],
-  )
+  useEffect(() => {
+    if (!generating) {
+      setElapsedSec(0)
+      return
+    }
+    const start = Date.now()
+    const id = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - start) / 1000))
+    }, 250)
+    return () => clearInterval(id)
+  }, [generating])
+
+  const fmtElapsed = (s: number) =>
+    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`
+
+  const allArticles = userArticles
 
   const { themeCounts, subCounts } = useMemo(() => {
     const tc: Record<string, number> = {}
@@ -89,6 +101,8 @@ export default function ArticleBrowser({
         const hay = (a.t + ' ' + (a.by || '') + ' ' + a.sec).toLowerCase()
         if (!hay.includes(q)) return false
       }
+      if (startDate && a.d < startDate) return false
+      if (endDate && a.d > endDate) return false
       const hasSub = activeSubs.size > 0
       const hasTheme = activeThemes.size > 0
       if (!hasSub && !hasTheme) return true
@@ -108,7 +122,7 @@ export default function ArticleBrowser({
       }
       return false
     })
-  }, [allArticles, search, activeThemes, activeSubs])
+  }, [allArticles, search, startDate, endDate, activeThemes, activeSubs])
 
   const derivedThemes = useMemo(() => {
     const set = new Set<string>()
@@ -140,42 +154,6 @@ export default function ArticleBrowser({
       onBundleCreated()
     } finally {
       setGenerating(false)
-    }
-  }
-
-  async function handleAddArticle() {
-    if (!newTitle.trim() || !newDate || !newSection.trim()) return
-    setAddingArticle(true)
-    try {
-      const themesObj: Record<string, string[]> = {}
-      newThemes.forEach((t) => (themesObj[t] = []))
-
-      const res = await fetch('/api/articles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: newTitle.trim(),
-          author: newAuthor.trim() || null,
-          date: newDate,
-          section: newSection.trim(),
-          themes: themesObj,
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        alert('Failed: ' + (err.error || res.statusText))
-        return
-      }
-      const article: Article = await res.json()
-      setUserArticles((prev) => [article, ...prev])
-      setNewTitle('')
-      setNewAuthor('')
-      setNewDate(TODAY)
-      setNewSection('')
-      setNewThemes([])
-      setShowAddArticle(false)
-    } finally {
-      setAddingArticle(false)
     }
   }
 
@@ -335,83 +313,33 @@ export default function ArticleBrowser({
   return (
     <div className="pane-left">
       <div className="pane-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h1>NYT AI articles browser</h1>
-          <button
-            style={{ fontSize: 11, padding: '3px 8px', height: 24 }}
-            onClick={() => setShowAddArticle((v) => !v)}
-          >
-            {showAddArticle ? 'Cancel' : '+ Add article'}
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+          <h1>Article library</h1>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              style={{ fontSize: 11, padding: '3px 8px', height: 24 }}
+              onClick={() => setShowImport((v) => !v)}
+            >
+              {showImport ? 'Cancel' : '+ Import articles'}
+            </button>
+            <button
+              style={{ fontSize: 11, padding: '3px 8px', height: 24 }}
+              onClick={onCollapse}
+              title="Collapse article library"
+              aria-label="Collapse article library"
+            >
+              ←
+            </button>
+          </div>
         </div>
-        <p className="subtitle">Times Topics: Artificial Intelligence — Feb 28 to Apr 17, 2026</p>
+        <p className="subtitle">Ingested articles across sources · filter, search, or select to build a theme</p>
       </div>
 
-      {showAddArticle && (
-        <div className="add-article-form">
-          <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>Add article to library</div>
-          <input
-            type="text"
-            placeholder="Title (required)"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Author (optional)"
-            value={newAuthor}
-            onChange={(e) => setNewAuthor(e.target.value)}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="date"
-              value={newDate}
-              onChange={(e) => setNewDate(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <input
-              type="text"
-              placeholder="Section (e.g. Technology)"
-              value={newSection}
-              onChange={(e) => setNewSection(e.target.value)}
-              style={{ flex: 1 }}
-            />
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 2 }}>
-            Themes (optional):
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
-            {themeConfig.map((tc) => (
-              <label key={tc.name} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={newThemes.includes(tc.name)}
-                  onChange={(e) => {
-                    if (e.target.checked) setNewThemes((prev) => [...prev, tc.name])
-                    else setNewThemes((prev) => prev.filter((t) => t !== tc.name))
-                  }}
-                />
-                {tc.name}
-              </label>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              className="primary"
-              style={{ fontSize: 12, padding: '6px 12px' }}
-              onClick={handleAddArticle}
-              disabled={addingArticle || !newTitle.trim() || !newSection.trim() || !newDate}
-            >
-              {addingArticle ? 'Adding…' : 'Add article'}
-            </button>
-            <button
-              style={{ fontSize: 12, padding: '6px 12px' }}
-              onClick={() => setShowAddArticle(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+      {showImport && (
+        <ImportArticlesForm
+          onClose={() => setShowImport(false)}
+          onImportComplete={refreshUserArticles}
+        />
       )}
 
       <div className="controls">
@@ -431,6 +359,8 @@ export default function ArticleBrowser({
         <button
           onClick={() => {
             setSearch('')
+            setStartDate('')
+            setEndDate('')
             setActiveThemes(new Set())
             setActiveSubs(new Set())
             setExpandedThemes(new Set())
@@ -440,7 +370,38 @@ export default function ArticleBrowser({
         </button>
       </div>
 
-      <div className="tag-label">Themes · click ▾ for sub-topics · shift-click to filter</div>
+      <div className="date-filter">
+        <span className="date-filter-label">Date range</span>
+        <input
+          type="date"
+          value={startDate}
+          max={endDate || undefined}
+          onChange={(e) => setStartDate(e.target.value)}
+          aria-label="From date"
+        />
+        <span className="date-filter-sep">–</span>
+        <input
+          type="date"
+          value={endDate}
+          min={startDate || undefined}
+          onChange={(e) => setEndDate(e.target.value)}
+          aria-label="To date"
+        />
+        {(startDate || endDate) && (
+          <button
+            className="date-filter-clear"
+            onClick={() => {
+              setStartDate('')
+              setEndDate('')
+            }}
+            aria-label="Clear date range"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      <div className="tag-label">Themes · click to filter and open sub-topics</div>
       <div className="tags">
         {themeConfig.map((tc) => {
           const hasSubs = tc.subs.length > 0
@@ -450,12 +411,9 @@ export default function ArticleBrowser({
             <span
               key={tc.name}
               className={`tag${isActive ? ' active' : ''}${hasSubs ? ' has-subs' : ''}${isExpanded ? ' expanded' : ''}`}
-              onClick={(e) => {
-                if (hasSubs && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
-                  toggleExpanded(tc.name)
-                } else {
-                  toggleTheme(tc.name)
-                }
+              onClick={() => {
+                toggleTheme(tc.name)
+                if (hasSubs) toggleExpanded(tc.name)
               }}
             >
               {tc.name}
@@ -521,15 +479,28 @@ export default function ArticleBrowser({
         <div className="article-list">{renderList()}</div>
       </div>
 
+      {generating && (
+        <div className="generating-banner">
+          <span className="spinner" />
+          <div className="generating-text">
+            <div className="generating-title">Generating theme synthesis…</div>
+            <div className="generating-sub">
+              {fmtElapsed(elapsedSec)} elapsed · usually 20–30 seconds
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="selection-bar">
-        <span className="count">
-          {selectedTitles.size === 0
-            ? 'Select articles to build a theme'
-            : `${selectedTitles.size} selected`}
-        </span>
-        <div style={{ display: 'flex', gap: 6 }}>
+        {selectedTitles.size > 0 && (
+          <span className="count">{selectedTitles.size} selected</span>
+        )}
+        <div style={{ display: 'flex', gap: 6, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
           {selectedTitles.size > 0 && (
-            <button onClick={onClearSelection} style={{ fontSize: 12, height: 30 }}>
+            <button
+              onClick={onClearSelection}
+              style={{ fontSize: 12, height: 30, flexShrink: 0 }}
+            >
               Clear
             </button>
           )}
@@ -538,11 +509,11 @@ export default function ArticleBrowser({
             placeholder="Theme title (optional)"
             value={bundleTitle}
             onChange={(e) => setBundleTitle(e.target.value)}
-            style={{ width: 160, height: 30, fontSize: 12 }}
+            style={{ height: 30, fontSize: 12, flex: '1 1 100px', minWidth: 60 }}
           />
           <button
             className="primary"
-            style={{ height: 30, fontSize: 12 }}
+            style={{ height: 30, fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}
             disabled={!activeCourseId || selectedTitles.size === 0 || generating}
             onClick={handleGenerateBundle}
           >
