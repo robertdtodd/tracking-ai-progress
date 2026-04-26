@@ -40,6 +40,7 @@ type Beat = {
     note: string | null
     bundleId: string
   } | null
+  expandedBundle: { id: string; title: string } | null
 }
 
 type SessionData = {

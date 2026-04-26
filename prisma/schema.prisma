@@ -30,9 +30,10 @@ model Bundle {
   publishedAt      DateTime?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
-  messages         Message[]
-  highlights       Highlight[]
-  referencingBeats Beat[]
+  messages          Message[]
+  highlights        Highlight[]
+  referencingBeats  Beat[]      @relation("BeatBundleRef")
+  expandedFromBeats Beat[]      @relation("BeatExpandedBundle")
 }
 
 model Highlight {
@@ -83,11 +84,13 @@ model Beat {
   outline      String?    @db.Text
   generated    Json?
   generatedAt  DateTime?
-  bundleId     String?
-  bundle       Bundle?    @relation(fields: [bundleId], references: [id], onDelete: SetNull)
-  sectionKey   String?
-  highlightId  String?
-  highlight    Highlight? @relation(fields: [highlightId], references: [id], onDelete: SetNull)
+  bundleId         String?
+  bundle           Bundle?    @relation("BeatBundleRef", fields: [bundleId], references: [id], onDelete: SetNull)
+  sectionKey       String?
+  highlightId      String?
+  highlight        Highlight? @relation(fields: [highlightId], references: [id], onDelete: SetNull)
+  expandedBundleId String?
+  expandedBundle   Bundle?    @relation("BeatExpandedBundle", fields: [expandedBundleId], references: [id], onDelete: SetNull)
   speakerNotes String?    @db.Text
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt

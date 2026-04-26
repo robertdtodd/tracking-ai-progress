@@ -44,6 +44,7 @@ export async function PATCH(
       highlight: {
         select: { id: true, anchorText: true, color: true, note: true, bundleId: true },
       },
+      expandedBundle: { select: { id: true, title: true } },
     },
   })
   return NextResponse.json(beat)

@@ -22,6 +22,18 @@ export async function GET(
           publishedAt: true,
         },
       },
+      sessions: {
+        where: { published: true },
+        orderBy: { position: 'asc' },
+        select: {
+          id: true,
+          position: true,
+          title: true,
+          description: true,
+          publishedAt: true,
+          _count: { select: { beats: true } },
+        },
+      },
     },
   })
   if (!course) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -30,5 +42,6 @@ export async function GET(
     name: course.name,
     description: course.description,
     bundles: course.bundles,
+    sessions: course.sessions,
   })
 }

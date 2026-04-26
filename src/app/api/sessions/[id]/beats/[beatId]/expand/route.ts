@@ -48,7 +48,14 @@ export async function POST(
       articleTitles: [],
       themes: [],
       generatedContent: result.content,
+      published: true,
+      publishedAt: new Date(),
     },
+  })
+
+  await prisma.beat.update({
+    where: { id: beat.id },
+    data: { expandedBundleId: bundle.id },
   })
 
   return NextResponse.json({ id: bundle.id, title: bundle.title })

@@ -62,6 +62,7 @@ export async function POST(
       highlight: {
         select: { id: true, anchorText: true, color: true, note: true, bundleId: true },
       },
+      expandedBundle: { select: { id: true, title: true } },
     },
   })
   return NextResponse.json(beat)

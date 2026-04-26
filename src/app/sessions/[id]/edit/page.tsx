@@ -47,6 +47,8 @@ type Beat = {
   speakerNotes: string | null
   bundle: BundleRef | null
   highlight: HighlightRef | null
+  expandedBundleId: string | null
+  expandedBundle: { id: string; title: string } | null
 }
 type SessionData = {
   id: string
@@ -191,7 +193,9 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
       alert(b.error ?? 'Expansion failed')
       return null
     }
-    return res.json()
+    const result = await res.json()
+    fetchSession()
+    return result
   }
 
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>
@@ -204,6 +208,42 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
           ← Back to editor
         </Link>
         <div style={{ flex: 1 }} />
+        <button
+          onClick={async () => {
+            await fetch(`/api/sessions/${params.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ published: !session.published }),
+            })
+            fetchSession()
+          }}
+          style={{
+            fontSize: 12,
+            background: session.published ? 'var(--bg-info)' : undefined,
+            color: session.published ? 'var(--text-info)' : undefined,
+          }}
+          title={
+            session.published
+              ? 'Unpublish — students will no longer see this session in /browse'
+              : 'Publish — students will see this session in /browse'
+          }
+        >
+          {session.published ? '● Published' : '○ Publish'}
+        </button>
+        {session.published && (
+          <Link
+            href={`/browse/${session.course.id}/sessions/${session.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: 12,
+              color: 'var(--text-secondary)',
+              textDecoration: 'none',
+            }}
+          >
+            View in browse ↗
+          </Link>
+        )}
         <Link
           href={`/present/${session.id}`}
           target="_blank"
@@ -235,6 +275,7 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
             index={i}
             total={session.beats.length}
             bundles={session.course.bundles}
+            courseId={session.course.id}
             onUpdate={(patch) => updateBeat(beat.id, patch)}
             onDelete={() => deleteBeat(beat.id)}
             onMove={(dir) => moveBeat(beat.id, dir)}
@@ -323,6 +364,7 @@ function BeatCard({
   index,
   total,
   bundles,
+  courseId,
   onUpdate,
   onDelete,
   onMove,
@@ -333,6 +375,7 @@ function BeatCard({
   index: number
   total: number
   bundles: SessionData['course']['bundles']
+  courseId: string
   onUpdate: (patch: Record<string, unknown>) => void
   onDelete: () => void
   onMove: (dir: -1 | 1) => void
@@ -385,6 +428,7 @@ function BeatCard({
         <SlideBeatEditor
           beat={beat}
           bundles={bundles}
+          courseId={courseId}
           onUpdate={onUpdate}
           onGenerate={runGenerate}
           onExpand={onExpand}
@@ -417,6 +461,7 @@ function beatKindLabel(beat: Beat): string {
 function SlideBeatEditor({
   beat,
   bundles,
+  courseId,
   onUpdate,
   onGenerate,
   onExpand,
@@ -424,6 +469,7 @@ function SlideBeatEditor({
 }: {
   beat: Beat
   bundles: SessionData['course']['bundles']
+  courseId: string
   onUpdate: (patch: Record<string, unknown>) => void
   onGenerate: () => void
   onExpand: () => Promise<{ id: string; title: string } | null>
@@ -432,7 +478,6 @@ function SlideBeatEditor({
   const [title, setTitle] = useState(beat.title ?? '')
   const [outline, setOutline] = useState(beat.outline ?? '')
   const [expanding, setExpanding] = useState(false)
-  const [expandedBundle, setExpandedBundle] = useState<{ id: string; title: string } | null>(null)
   useEffect(() => {
     setTitle(beat.title ?? '')
     setOutline(beat.outline ?? '')
@@ -442,9 +487,8 @@ function SlideBeatEditor({
 
   async function runExpand() {
     setExpanding(true)
-    const result = await onExpand()
+    await onExpand()
     setExpanding(false)
-    if (result) setExpandedBundle(result)
   }
 
   function changeType(newType: SlideType) {
@@ -541,8 +585,11 @@ function SlideBeatEditor({
         )}
       </div>
 
-      {expandedBundle && (
-        <div
+      {beat.expandedBundle && (
+        <a
+          href={`/browse/${courseId}/${beat.expandedBundle.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
           style={{
             fontSize: 12,
             padding: '6px 10px',
@@ -550,10 +597,13 @@ function SlideBeatEditor({
             color: 'var(--text-info)',
             borderRadius: 'var(--radius-md)',
             border: '0.5px solid var(--border-info)',
+            textDecoration: 'none',
+            display: 'inline-block',
+            width: 'fit-content',
           }}
         >
-          Created bundle &ldquo;{expandedBundle.title}&rdquo; — open the course dashboard to view it.
-        </div>
+          Long-form companion: &ldquo;{beat.expandedBundle.title}&rdquo; ↗
+        </a>
       )}
 
       {beat.generated && <SlidePreview beat={beat} />}
