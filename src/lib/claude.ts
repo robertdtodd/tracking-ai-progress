@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { Article } from './articles'
+import { VOICE_SAMPLES } from './voiceSamples'
 
 export const anthropic = new Anthropic()
 
@@ -133,6 +134,95 @@ Respond with your answer directly — no special formatting tags required.`
 
   const block = response.content[0]
   return block.type === 'text' ? block.text.trim() : ''
+}
+
+export type TextSlideContext = {
+  courseName?: string
+  sessionTitle?: string
+  bundleTitle?: string
+  bundleContent?: string
+  articleTitles?: string[]
+  allArticles?: Article[]
+}
+
+export async function generateTextSlide(
+  outline: string,
+  context: TextSlideContext = {},
+): Promise<{ title: string; body: string; speakerNotes: string }> {
+  const contextParts: string[] = []
+  if (context.courseName) contextParts.push(`Course: ${context.courseName}`)
+  if (context.sessionTitle) contextParts.push(`Session: ${context.sessionTitle}`)
+  if (context.bundleTitle) contextParts.push(`Related lesson: ${context.bundleTitle}`)
+  if (context.articleTitles && context.articleTitles.length && context.allArticles) {
+    const list = formatArticles(context.articleTitles, context.allArticles)
+    if (list) contextParts.push(`Source articles:\n${list}`)
+  }
+  if (context.bundleContent) {
+    contextParts.push(`Lesson content for grounding:\n${context.bundleContent}`)
+  }
+  const contextBlock = contextParts.length ? contextParts.join('\n\n') : '(no additional context)'
+
+  // Stable persona/voice/format block — cached for cost efficiency across slide generations.
+  const personaBlock = `You are generating a single presentation slide for a classroom.
+
+${AUTHOR_VOICE}
+
+${VOICE_SAMPLES}
+
+OUTPUT FORMAT — return the slide in this exact format, always all three tags:
+<title>Short slide title, under 8 words.</title>
+<body>The slide body. Markdown is allowed. Keep it tight: either a short paragraph (2–4 sentences) OR 3–5 bullets. Slides are read at a distance — favor punchy over comprehensive.</body>
+<speaker_notes>What the instructor says aloud when showing this slide. 2–4 sentences. Can expand on what's on screen, name the evidence, point at the tension. This is the teacher's script, not the slide.</speaker_notes>`
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    system: [
+      { type: 'text', text: personaBlock, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: `PER-CALL CONTEXT:\n${contextBlock}` },
+    ],
+    messages: [{ role: 'user', content: outline }],
+  })
+
+  const block = response.content[0]
+  const text = block.type === 'text' ? block.text : ''
+  const titleMatch = text.match(/<title>([\s\S]*?)<\/title>/)
+  const bodyMatch = text.match(/<body>([\s\S]*?)<\/body>/)
+  const notesMatch = text.match(/<speaker_notes>([\s\S]*?)<\/speaker_notes>/)
+
+  return {
+    title: titleMatch ? titleMatch[1].trim() : '',
+    body: bodyMatch ? bodyMatch[1].trim() : text.trim(),
+    speakerNotes: notesMatch ? notesMatch[1].trim() : '',
+  }
+}
+
+export async function generateDiagram(userPrompt: string): Promise<string> {
+  const system = `You are generating a single self-contained HTML document that will render as a visual slide in a classroom presentation.
+
+Requirements:
+- Return ONLY the full HTML document. No explanation, no markdown fences, nothing before <!DOCTYPE html> or after </html>.
+- Completely self-contained: no external URLs, no external fonts, no external images, no CDNs. Everything inline.
+- Use inline <style> for CSS and <svg> for diagrams. Use CSS @keyframes for any animation.
+- Dark background (#0a0a0a), light foreground. Use a system sans-serif stack for text.
+- Fill the viewport: set html, body { height: 100%; margin: 0 } and size the content to the viewport. Use viewBox on SVGs.
+- Design for a 16:9 slide. Center content. Leave comfortable padding.
+- Labels must be readable at presentation distance — font sizes >= 16px for body text, larger for headings.
+- Inline <script> is allowed only if needed for an animation or interaction that CSS alone can't do. Never use fetch, XMLHttpRequest, localStorage, cookies, or any DOM API that reaches outside the document.
+- Prefer clarity over decoration. A teacher is showing this to students — it should teach something at a glance.`
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 8000,
+    system,
+    messages: [{ role: 'user', content: userPrompt }],
+  })
+
+  const block = message.content[0]
+  const text = block.type === 'text' ? block.text : ''
+  const trimmed = text.trim()
+  const fenced = trimmed.match(/```(?:html)?\s*([\s\S]*?)```/i)
+  return fenced ? fenced[1].trim() : trimmed
 }
 
 export async function chatWithBundle(

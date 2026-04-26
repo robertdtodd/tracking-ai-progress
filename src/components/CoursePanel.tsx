@@ -48,6 +48,14 @@ type CourseDetail = {
   bundles: Bundle[]
 }
 
+type SessionSummary = {
+  id: string
+  title: string
+  position: number
+  published: boolean
+  _count: { beats: number }
+}
+
 interface Props {
   activeCourseId: string | null
   setActiveCourseId: (id: string | null) => void
@@ -69,6 +77,7 @@ export default function CoursePanel({
 }: Props) {
   const [courses, setCourses] = useState<CourseSummary[]>([])
   const [course, setCourse] = useState<CourseDetail | null>(null)
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeBundleId, setActiveBundleId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -101,10 +110,36 @@ export default function CoursePanel({
     fetchCourses()
   }, [])
 
+  async function fetchSessions(id: string) {
+    const res = await fetch(`/api/courses/${id}/sessions`)
+    if (res.ok) setSessions(await res.json())
+    else setSessions([])
+  }
+
   useEffect(() => {
-    if (activeCourseId) fetchCourse(activeCourseId)
-    else setCourse(null)
+    if (activeCourseId) {
+      fetchCourse(activeCourseId)
+      fetchSessions(activeCourseId)
+    } else {
+      setCourse(null)
+      setSessions([])
+    }
   }, [activeCourseId, refreshTick])
+
+  async function handleCreateSession() {
+    if (!activeCourseId) return
+    const res = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId: activeCourseId }),
+    })
+    if (!res.ok) {
+      alert('Failed to create session')
+      return
+    }
+    const created = await res.json()
+    window.location.href = `/sessions/${created.id}/edit`
+  }
 
   async function handleCreateCourse() {
     const name = prompt('Course name?')
@@ -292,6 +327,49 @@ export default function CoursePanel({
                     {b.themes.length > 0 && ` · ${b.themes.length} themes`}
                   </div>
                 </div>
+              ))
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+              padding: '8px 12px',
+              borderBottom: '0.5px solid var(--border-1)',
+              background: 'var(--bg-secondary)',
+              fontSize: 12,
+            }}
+          >
+            <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Sessions
+            </span>
+            <button onClick={handleCreateSession}>+ New session</button>
+            {sessions.length === 0 ? (
+              <span style={{ color: 'var(--text-tertiary)' }}>
+                None yet — create one to start building a class flow.
+              </span>
+            ) : (
+              sessions.map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/sessions/${s.id}/edit`}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '0.5px solid var(--border-1)',
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    textDecoration: 'none',
+                  }}
+                >
+                  {s.title}
+                  <span style={{ color: 'var(--text-tertiary)', marginLeft: 6 }}>
+                    ({s._count.beats})
+                  </span>
+                </Link>
               ))
             )}
           </div>
