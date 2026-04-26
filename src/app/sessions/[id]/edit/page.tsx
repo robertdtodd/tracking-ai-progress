@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import ChartRenderer, { ChartData } from '@/components/ChartRenderer'
 
 type BeatKind = 'slide' | 'bundle_section' | 'highlight_quote' | 'section_header'
 type SlideType = 'text' | 'diagram' | 'chart'
@@ -27,7 +28,18 @@ type Beat = {
   slideType: SlideType | null
   title: string | null
   outline: string | null
-  generated: { html?: string; body?: string } | null
+  generated:
+    | {
+        html?: string
+        body?: string
+        chartType?: 'bar' | 'line'
+        title?: string
+        xLabel?: string
+        yLabel?: string
+        data?: Array<{ label: string; value: number }>
+        dataNote?: string | null
+      }
+    | null
   generatedAt: string | null
   bundleId: string | null
   sectionKey: string | null
@@ -170,6 +182,18 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
     fetchSession()
   }
 
+  async function expandBeat(beatId: string): Promise<{ id: string; title: string } | null> {
+    const res = await fetch(`/api/sessions/${params.id}/beats/${beatId}/expand`, {
+      method: 'POST',
+    })
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}))
+      alert(b.error ?? 'Expansion failed')
+      return null
+    }
+    return res.json()
+  }
+
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>
   if (error || !session) return <div style={{ padding: 24, color: '#c0392b' }}>{error || 'Not found'}</div>
 
@@ -215,6 +239,7 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
             onDelete={() => deleteBeat(beat.id)}
             onMove={(dir) => moveBeat(beat.id, dir)}
             onGenerate={() => generateBeat(beat.id)}
+            onExpand={() => expandBeat(beat.id)}
           />
         ))}
       </div>
@@ -302,6 +327,7 @@ function BeatCard({
   onDelete,
   onMove,
   onGenerate,
+  onExpand,
 }: {
   beat: Beat
   index: number
@@ -311,6 +337,7 @@ function BeatCard({
   onDelete: () => void
   onMove: (dir: -1 | 1) => void
   onGenerate: () => void
+  onExpand: () => Promise<{ id: string; title: string } | null>
 }) {
   const [generating, setGenerating] = useState(false)
 
@@ -360,6 +387,7 @@ function BeatCard({
           bundles={bundles}
           onUpdate={onUpdate}
           onGenerate={runGenerate}
+          onExpand={onExpand}
           generating={generating}
         />
       )}
@@ -391,22 +419,33 @@ function SlideBeatEditor({
   bundles,
   onUpdate,
   onGenerate,
+  onExpand,
   generating,
 }: {
   beat: Beat
   bundles: SessionData['course']['bundles']
   onUpdate: (patch: Record<string, unknown>) => void
   onGenerate: () => void
+  onExpand: () => Promise<{ id: string; title: string } | null>
   generating: boolean
 }) {
   const [title, setTitle] = useState(beat.title ?? '')
   const [outline, setOutline] = useState(beat.outline ?? '')
+  const [expanding, setExpanding] = useState(false)
+  const [expandedBundle, setExpandedBundle] = useState<{ id: string; title: string } | null>(null)
   useEffect(() => {
     setTitle(beat.title ?? '')
     setOutline(beat.outline ?? '')
   }, [beat.id, beat.title, beat.outline])
 
   const dirty = title !== (beat.title ?? '') || outline !== (beat.outline ?? '')
+
+  async function runExpand() {
+    setExpanding(true)
+    const result = await onExpand()
+    setExpanding(false)
+    if (result) setExpandedBundle(result)
+  }
 
   function changeType(newType: SlideType) {
     if (newType === beat.slideType) return
@@ -417,7 +456,7 @@ function SlideBeatEditor({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 6 }}>
-        {(['text', 'diagram'] as SlideType[]).map((t) => (
+        {(['text', 'diagram', 'chart'] as SlideType[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -450,12 +489,14 @@ function SlideBeatEditor({
         placeholder={
           beat.slideType === 'diagram'
             ? 'Describe the visual. e.g. "animated diagram of a neural net"'
-            : 'What should this slide say? A short prompt for the LLM.'
+            : beat.slideType === 'chart'
+              ? 'Describe the chart. e.g. "AI spend as % of IT budgets, 2020–2026, bar chart"'
+              : 'What should this slide say? A short prompt for the LLM.'
         }
         rows={3}
         style={textareaStyle}
       />
-      {beat.slideType === 'text' && (
+      {(beat.slideType === 'text' || beat.slideType === 'chart') && (
         <select
           value={beat.bundleId ?? ''}
           onChange={(e) => onUpdate({ bundleId: e.target.value || null })}
@@ -488,7 +529,32 @@ function SlideBeatEditor({
             Generated {new Date(beat.generatedAt).toLocaleString()}
           </span>
         )}
+        {beat.slideType === 'text' && (
+          <button
+            onClick={runExpand}
+            disabled={expanding || !outline.trim() || dirty}
+            title={dirty ? 'Save first' : 'Generate a long-form bundle from this slide outline'}
+            style={{ fontSize: 12 }}
+          >
+            {expanding ? 'Expanding…' : 'Expand into bundle'}
+          </button>
+        )}
       </div>
+
+      {expandedBundle && (
+        <div
+          style={{
+            fontSize: 12,
+            padding: '6px 10px',
+            background: 'var(--bg-info)',
+            color: 'var(--text-info)',
+            borderRadius: 'var(--radius-md)',
+            border: '0.5px solid var(--border-info)',
+          }}
+        >
+          Created bundle &ldquo;{expandedBundle.title}&rdquo; — open the course dashboard to view it.
+        </div>
+      )}
 
       {beat.generated && <SlidePreview beat={beat} />}
     </div>
@@ -533,6 +599,29 @@ function SlidePreview({ beat }: { beat: Beat }) {
       >
         {beat.title && <h3 style={{ marginTop: 0, marginBottom: 8 }}>{beat.title}</h3>}
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{beat.generated.body}</ReactMarkdown>
+      </div>
+    )
+  }
+  if (beat.slideType === 'chart' && beat.generated.chartType && beat.generated.data) {
+    const chart: ChartData = {
+      chartType: beat.generated.chartType,
+      title: beat.title ?? beat.generated.title,
+      xLabel: beat.generated.xLabel,
+      yLabel: beat.generated.yLabel,
+      data: beat.generated.data,
+      dataNote: beat.generated.dataNote,
+    }
+    return (
+      <div
+        style={{
+          border: '0.5px solid var(--border-2)',
+          borderRadius: 'var(--radius-md)',
+          padding: 16,
+          background: 'var(--bg-secondary)',
+          marginTop: 4,
+        }}
+      >
+        <ChartRenderer chart={chart} theme="light" />
       </div>
     )
   }
@@ -817,7 +906,7 @@ function AddSlideForm({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8 }}>
-        {(['text', 'diagram'] as SlideType[]).map((t) => (
+        {(['text', 'diagram', 'chart'] as SlideType[]).map((t) => (
           <button
             key={t}
             onClick={() => setSlideType(t)}
@@ -847,11 +936,13 @@ function AddSlideForm({
         placeholder={
           slideType === 'diagram'
             ? 'Describe the visual'
-            : 'What should this slide say?'
+            : slideType === 'chart'
+              ? 'Describe the chart, e.g. "AI spend as % of IT budgets, 2020–2026"'
+              : 'What should this slide say?'
         }
         style={textareaStyle}
       />
-      {slideType === 'text' && (
+      {(slideType === 'text' || slideType === 'chart') && (
         <select
           value={bundleId}
           onChange={(e) => setBundleId(e.target.value)}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import ChartRenderer, { ChartData } from './ChartRenderer'
 
 type BeatKind = 'slide' | 'bundle_section' | 'highlight_quote' | 'section_header'
 type SlideType = 'text' | 'diagram' | 'chart'
@@ -15,7 +16,18 @@ type Beat = {
   slideType: SlideType | null
   title: string | null
   outline: string | null
-  generated: { html?: string; body?: string } | null
+  generated:
+    | {
+        html?: string
+        body?: string
+        chartType?: 'bar' | 'line'
+        title?: string
+        xLabel?: string
+        yLabel?: string
+        data?: Array<{ label: string; value: number }>
+        dataNote?: string | null
+      }
+    | null
   bundleId: string | null
   sectionKey: string | null
   highlightId: string | null
@@ -263,6 +275,27 @@ function BeatRenderer({ beat }: { beat: Beat }) {
         <div style={textSlideBodyStyle}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{beat.generated.body}</ReactMarkdown>
         </div>
+      </div>
+    )
+  }
+
+  if (
+    beat.kind === 'slide' &&
+    beat.slideType === 'chart' &&
+    beat.generated?.chartType &&
+    beat.generated?.data
+  ) {
+    const chart: ChartData = {
+      chartType: beat.generated.chartType,
+      title: beat.title ?? beat.generated.title,
+      xLabel: beat.generated.xLabel,
+      yLabel: beat.generated.yLabel,
+      data: beat.generated.data,
+      dataNote: beat.generated.dataNote,
+    }
+    return (
+      <div style={{ width: '100%', maxWidth: 1200 }}>
+        <ChartRenderer chart={chart} theme="dark" />
       </div>
     )
   }

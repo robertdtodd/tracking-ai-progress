@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { generateDiagram, generateTextSlide } from '@/lib/claude'
+import { generateChartSlide, generateDiagram, generateTextSlide } from '@/lib/claude'
 import { getAllArticles } from '@/lib/getAllArticles'
 
 export const maxDuration = 120
@@ -58,10 +58,30 @@ export async function POST(
       })
     }
   } else if (beat.slideType === 'chart') {
-    return NextResponse.json(
-      { error: 'Chart slides are not implemented yet' },
-      { status: 501 },
-    )
+    const allArticles = beat.bundle ? await getAllArticles() : undefined
+    const result = await generateChartSlide(beat.outline, {
+      courseName: beat.session.course.name,
+      sessionTitle: beat.session.title,
+      bundleTitle: beat.bundle?.title,
+      bundleContent: beat.bundle?.generatedContent,
+      articleTitles: beat.bundle?.articleTitles,
+      allArticles,
+    })
+    generated = {
+      chartType: result.chartType,
+      title: result.title,
+      xLabel: result.xLabel,
+      yLabel: result.yLabel,
+      data: result.data,
+      dataNote: result.dataNote ?? null,
+    }
+    if (!resolvedTitle && result.title) resolvedTitle = result.title
+    if (!beat.speakerNotes && result.speakerNotes) {
+      await prisma.beat.update({
+        where: { id: beat.id },
+        data: { speakerNotes: result.speakerNotes },
+      })
+    }
   } else {
     return NextResponse.json({ error: 'Unknown slideType' }, { status: 400 })
   }

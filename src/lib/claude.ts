@@ -88,6 +88,58 @@ Use these exact section headers. The articles are your evidence; the issue is yo
   return block.type === 'text' ? block.text : ''
 }
 
+export async function generateBundleFromOutline(
+  outline: string,
+  context: { courseName: string; sessionTitle?: string; slideTitle?: string },
+): Promise<{ title: string; content: string }> {
+  const sessionPart = context.sessionTitle ? `Session: ${context.sessionTitle}` : ''
+  const slidePart = context.slideTitle ? `Slide: ${context.slideTitle}` : ''
+  const ctxLines = [sessionPart, slidePart].filter(Boolean).join('\n')
+
+  const personaBlock = `You are expanding a single slide outline into a long-form lesson companion for an AI literacy course called "${context.courseName}".
+
+${AUTHOR_VOICE}
+
+The instructor has authored a slide with a short outline. Your job is to expand that outline into a self-contained long-form lesson — the kind of piece a student or curious adult would read after the class to go deeper. The slide is the headline; this is the article behind it.
+
+Use these exact section headers:
+
+## Bottom line
+One or two sentences synthesizing the core stake. Punchy, declarative.
+
+## Overview
+Two to three paragraphs framing what is actually going on, why it matters, and what makes it contested or consequential.
+
+## This vs. That
+Frame the disagreement as 2–4 concrete tensions, each with a "X vs. Y" header. For each pair, give one short paragraph laying out both sides — who holds each view, their reasoning, what's at stake. Do not strawman any side.
+
+## Discussion Questions
+Five to six open-ended questions for classroom or self-study. Mix factual, interpretive, and ethical. Discussable, not Google-able.
+
+You do not have specific source articles for this expansion — write from your general knowledge and the slide outline. Do not fabricate specific citations or invented statistics. Keep claims at the level of well-established public knowledge or named ongoing debates. Where you would normally cite a specific article, instead reference the named entities, debates, or developments by description.`
+
+  const userMessage = `${ctxLines}\n\nSLIDE OUTLINE:\n${outline}\n\nExpand this slide into a long-form lesson using the section headers specified.`
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 6000,
+    system: [{ type: 'text', text: personaBlock, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: userMessage }],
+  })
+
+  const block = response.content[0]
+  const text = block.type === 'text' ? block.text.trim() : ''
+
+  // Title: prefer the slide title if provided; otherwise derive from the first ## heading or outline.
+  let title = context.slideTitle?.trim() || ''
+  if (!title) {
+    const firstHeading = text.match(/^##\s+(.+?)\s*$/m)
+    title = firstHeading ? firstHeading[1] : outline.slice(0, 60)
+  }
+
+  return { title, content: text }
+}
+
 export async function discussWithBundle(
   courseName: string,
   bundleTitle: string,
@@ -195,6 +247,106 @@ OUTPUT FORMAT — return the slide in this exact format, always all three tags:
     body: bodyMatch ? bodyMatch[1].trim() : text.trim(),
     speakerNotes: notesMatch ? notesMatch[1].trim() : '',
   }
+}
+
+export type ChartSlideOutput = {
+  chartType: 'bar' | 'line'
+  title: string
+  xLabel: string
+  yLabel: string
+  data: Array<{ label: string; value: number }>
+  dataNote?: string
+  speakerNotes?: string
+}
+
+export async function generateChartSlide(
+  outline: string,
+  context: TextSlideContext = {},
+): Promise<ChartSlideOutput> {
+  const contextParts: string[] = []
+  if (context.courseName) contextParts.push(`Course: ${context.courseName}`)
+  if (context.sessionTitle) contextParts.push(`Session: ${context.sessionTitle}`)
+  if (context.bundleTitle) contextParts.push(`Related lesson: ${context.bundleTitle}`)
+  if (context.articleTitles && context.articleTitles.length && context.allArticles) {
+    const list = formatArticles(context.articleTitles, context.allArticles)
+    if (list) contextParts.push(`Source articles:\n${list}`)
+  }
+  if (context.bundleContent) {
+    contextParts.push(`Lesson content for grounding:\n${context.bundleContent}`)
+  }
+  const contextBlock = contextParts.length ? contextParts.join('\n\n') : '(no additional context)'
+
+  const personaBlock = `You are generating a single chart slide for a classroom presentation.
+
+${AUTHOR_VOICE}
+
+Charts in this app are simple: a single series of labeled values, rendered as either a bar chart or a line chart. Pick the chart type that best fits the data — bar for categorical comparisons (companies, regions, years as buckets), line for trends over an ordered axis (year-over-year, time series).
+
+CRITICAL — be honest about data:
+- If you have specific real numbers from a verifiable source, use them and reflect that in the dataNote.
+- If you are extrapolating or producing illustrative figures (because you don't have specific cited data for the exact axis the slide asks about), say so plainly in the dataNote: e.g. "Illustrative — directional estimate, not specific verified data" or "Order-of-magnitude approximation."
+- Do not invent precise-looking numbers and present them as authoritative. The slide will be shown to an audience who deserves to know what kind of evidence backs the chart.
+
+Use the report_chart_slide tool to return the chart. Keep titles short. Labels should be readable at presentation distance.`
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    system: [
+      { type: 'text', text: personaBlock, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: `PER-CALL CONTEXT:\n${contextBlock}` },
+    ],
+    tools: [
+      {
+        name: 'report_chart_slide',
+        description: 'Return the chart slide.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            chartType: {
+              type: 'string',
+              enum: ['bar', 'line'],
+              description: 'bar for categorical comparisons; line for trends over an ordered axis.',
+            },
+            title: { type: 'string', description: 'Chart title, under 8 words.' },
+            xLabel: { type: 'string', description: 'X-axis label.' },
+            yLabel: { type: 'string', description: 'Y-axis label.' },
+            data: {
+              type: 'array',
+              description: '4–12 labeled values.',
+              items: {
+                type: 'object',
+                properties: {
+                  label: { type: 'string' },
+                  value: { type: 'number' },
+                },
+                required: ['label', 'value'],
+              },
+            },
+            dataNote: {
+              type: 'string',
+              description:
+                'A short caveat about the source/precision of the data. Required when figures are illustrative or extrapolated. Omit only when reporting specific verified numbers.',
+            },
+            speakerNotes: {
+              type: 'string',
+              description:
+                "What the instructor says aloud when showing this chart. 2–4 sentences. Point at what to notice, name the source/caveat, frame the takeaway. The teacher's script.",
+            },
+          },
+          required: ['chartType', 'title', 'xLabel', 'yLabel', 'data'],
+        },
+      },
+    ],
+    tool_choice: { type: 'tool', name: 'report_chart_slide' },
+    messages: [{ role: 'user', content: outline }],
+  })
+
+  const toolUse = response.content.find((b) => b.type === 'tool_use')
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    throw new Error('Claude did not call the report_chart_slide tool')
+  }
+  return toolUse.input as ChartSlideOutput
 }
 
 export async function generateDiagram(userPrompt: string): Promise<string> {
