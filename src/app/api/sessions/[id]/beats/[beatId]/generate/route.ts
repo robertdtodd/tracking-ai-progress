@@ -6,12 +6,9 @@ import { getAllArticles } from '@/lib/getAllArticles'
 export const maxDuration = 120
 
 export async function POST(
-  req: Request,
+  _req: Request,
   { params }: { params: { id: string; beatId: string } },
 ) {
-  const body = await req.json().catch(() => ({}))
-  const enableWebSearch = body?.enableWebSearch === true
-
   const beat = await prisma.beat.findUnique({
     where: { id: params.beatId },
     include: {
@@ -39,22 +36,18 @@ export async function POST(
   let resolvedTitle: string | null = beat.title
 
   if (beat.slideType === 'diagram') {
-    const html = await generateDiagram(beat.outline, { enableWebSearch })
+    const html = await generateDiagram(beat.outline)
     generated = { html }
   } else if (beat.slideType === 'text') {
     const allArticles = beat.bundle ? await getAllArticles() : undefined
-    const result = await generateTextSlide(
-      beat.outline,
-      {
-        courseName: beat.session.course.name,
-        sessionTitle: beat.session.title,
-        bundleTitle: beat.bundle?.title,
-        bundleContent: beat.bundle?.generatedContent,
-        articleTitles: beat.bundle?.articleTitles,
-        allArticles,
-      },
-      { enableWebSearch },
-    )
+    const result = await generateTextSlide(beat.outline, {
+      courseName: beat.session.course.name,
+      sessionTitle: beat.session.title,
+      bundleTitle: beat.bundle?.title,
+      bundleContent: beat.bundle?.generatedContent,
+      articleTitles: beat.bundle?.articleTitles,
+      allArticles,
+    })
     generated = { body: result.body }
     if (!resolvedTitle && result.title) resolvedTitle = result.title
     // Only overwrite speakerNotes if the user hasn't written their own.

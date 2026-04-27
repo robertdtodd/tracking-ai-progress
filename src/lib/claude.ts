@@ -200,7 +200,6 @@ export type TextSlideContext = {
 export async function generateTextSlide(
   outline: string,
   context: TextSlideContext = {},
-  options: { enableWebSearch?: boolean } = {},
 ): Promise<{ title: string; body: string; speakerNotes: string }> {
   const contextParts: string[] = []
   if (context.courseName) contextParts.push(`Course: ${context.courseName}`)
@@ -234,17 +233,11 @@ OUTPUT FORMAT — return the slide in this exact format, always all three tags:
       { type: 'text', text: personaBlock, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: `PER-CALL CONTEXT:\n${contextBlock}` },
     ],
-    ...(options.enableWebSearch
-      ? { tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }] }
-      : {}),
     messages: [{ role: 'user', content: outline }],
   })
 
-  // With web_search enabled, earlier blocks are server_tool_use / web_search_tool_result.
-  // Find the last text block, which contains the XML output.
-  const textBlocks = response.content.filter((b) => b.type === 'text')
-  const last = textBlocks[textBlocks.length - 1]
-  const text = last && last.type === 'text' ? last.text : ''
+  const block = response.content[0]
+  const text = block.type === 'text' ? block.text : ''
   const titleMatch = text.match(/<title>([\s\S]*?)<\/title>/)
   const bodyMatch = text.match(/<body>([\s\S]*?)<\/body>/)
   const notesMatch = text.match(/<speaker_notes>([\s\S]*?)<\/speaker_notes>/)
@@ -356,15 +349,53 @@ Use the report_chart_slide tool to return the chart. Keep titles short. Labels s
   return toolUse.input as ChartSlideOutput
 }
 
-export async function generateDiagram(
-  userPrompt: string,
-  options: { enableWebSearch?: boolean } = {},
+export async function expandOutlineWithSearch(
+  outline: string,
+  context: { courseName?: string; sessionTitle?: string; slideType?: 'text' | 'diagram' | 'chart' } = {},
 ): Promise<string> {
-  const searchGuidance = options.enableWebSearch
-    ? `\n\nYou have access to a web_search tool. The user explicitly enabled it for this diagram, which means they want current factual grounding (specific recent statistics, named recent events, current company structures). Use it. Keep searches to one or two focused queries.\n`
-    : ''
+  const courseLine = context.courseName ? `Course: ${context.courseName}` : ''
+  const sessionLine = context.sessionTitle ? `Session: ${context.sessionTitle}` : ''
+  const slideLine = context.slideType ? `Target slide type: ${context.slideType}` : ''
+  const ctx = [courseLine, sessionLine, slideLine].filter(Boolean).join('\n')
 
-  const system = `You are generating a single self-contained HTML document that will render as a visual slide in a classroom presentation.${searchGuidance}
+  const system = `You are a research assistant for a classroom presentation.
+
+The user has written a terse outline for one slide. Your job: use web search to gather current, specific facts that should inform that slide, then return a single rewritten outline that weaves those facts into the user's original framing.
+
+You are NOT generating the slide. You are NOT producing HTML or visual content. You are rewriting the user's prompt into a richer, fact-laden version of itself that a downstream slide generator will use.
+
+RULES:
+- Preserve the user's original intent, framing, and any specific instructions about visual structure ("three boxes", "as a chart", etc.).
+- Use web_search for current facts: named entities, dates, numbers, recent events, product specs. Keep searches to 1–3 focused queries.
+- Add facts inline where they belong; do not add a separate "Sources:" section.
+- Do not invent facts. If search doesn't surface something the user asked about, leave it as-is or note "(verify before presenting)".
+- Output ONLY the rewritten outline as plain text. No preamble, no commentary, no markdown headers, no code fences. Just the outline.
+
+${ctx ? `CONTEXT:\n${ctx}\n` : ''}USER'S OUTLINE:
+${outline}`
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    system,
+    tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+    messages: [{ role: 'user', content: 'Research and expand the outline above.' }],
+  })
+
+  if (message.stop_reason === 'pause_turn') {
+    console.warn(
+      '[expandOutlineWithSearch] stop_reason=pause_turn — returning whatever text was produced',
+    )
+  }
+
+  // Find the last text block — earlier blocks are server_tool_use / web_search_tool_result.
+  const textBlocks = message.content.filter((b) => b.type === 'text')
+  const last = textBlocks[textBlocks.length - 1]
+  return last && last.type === 'text' ? last.text.trim() : ''
+}
+
+export async function generateDiagram(userPrompt: string): Promise<string> {
+  const system = `You are generating a single self-contained HTML document that will render as a visual slide in a classroom presentation.
 
 Requirements:
 - Return ONLY the full HTML document in your final text response. No explanation, no markdown fences, nothing before <!DOCTYPE html> or after </html>.
@@ -381,22 +412,11 @@ Requirements:
     model: MODEL,
     max_tokens: 8000,
     system,
-    ...(options.enableWebSearch
-      ? { tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }] }
-      : {}),
     messages: [{ role: 'user', content: userPrompt }],
   })
 
-  if (message.stop_reason === 'pause_turn') {
-    console.warn(
-      '[generateDiagram] stop_reason=pause_turn — server tool loop hit iteration cap; returning whatever text was produced',
-    )
-  }
-
-  // Find the LAST text block — earlier blocks may be server_tool_use / web_search_tool_result.
-  const textBlocks = message.content.filter((b) => b.type === 'text')
-  const last = textBlocks[textBlocks.length - 1]
-  const text = last && last.type === 'text' ? last.text : ''
+  const block = message.content[0]
+  const text = block.type === 'text' ? block.text : ''
   const trimmed = text.trim()
   const fenced = trimmed.match(/```(?:html)?\s*([\s\S]*?)```/i)
   return fenced ? fenced[1].trim() : trimmed
