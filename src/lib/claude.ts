@@ -200,6 +200,7 @@ export type TextSlideContext = {
 export async function generateTextSlide(
   outline: string,
   context: TextSlideContext = {},
+  options: { enableWebSearch?: boolean } = {},
 ): Promise<{ title: string; body: string; speakerNotes: string }> {
   const contextParts: string[] = []
   if (context.courseName) contextParts.push(`Course: ${context.courseName}`)
@@ -233,11 +234,17 @@ OUTPUT FORMAT — return the slide in this exact format, always all three tags:
       { type: 'text', text: personaBlock, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: `PER-CALL CONTEXT:\n${contextBlock}` },
     ],
+    ...(options.enableWebSearch
+      ? { tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }] }
+      : {}),
     messages: [{ role: 'user', content: outline }],
   })
 
-  const block = response.content[0]
-  const text = block.type === 'text' ? block.text : ''
+  // With web_search enabled, earlier blocks are server_tool_use / web_search_tool_result.
+  // Find the last text block, which contains the XML output.
+  const textBlocks = response.content.filter((b) => b.type === 'text')
+  const last = textBlocks[textBlocks.length - 1]
+  const text = last && last.type === 'text' ? last.text : ''
   const titleMatch = text.match(/<title>([\s\S]*?)<\/title>/)
   const bodyMatch = text.match(/<body>([\s\S]*?)<\/body>/)
   const notesMatch = text.match(/<speaker_notes>([\s\S]*?)<\/speaker_notes>/)
@@ -349,10 +356,15 @@ Use the report_chart_slide tool to return the chart. Keep titles short. Labels s
   return toolUse.input as ChartSlideOutput
 }
 
-export async function generateDiagram(userPrompt: string): Promise<string> {
-  const system = `You are generating a single self-contained HTML document that will render as a visual slide in a classroom presentation.
+export async function generateDiagram(
+  userPrompt: string,
+  options: { enableWebSearch?: boolean } = {},
+): Promise<string> {
+  const searchGuidance = options.enableWebSearch
+    ? `\n\nYou have access to a web_search tool. The user explicitly enabled it for this diagram, which means they want current factual grounding (specific recent statistics, named recent events, current company structures). Use it. Keep searches to one or two focused queries.\n`
+    : ''
 
-You have access to a web_search tool. Use it ONLY when the diagram needs current factual grounding the user explicitly asked for — e.g. specific 2026 statistics, named recent events, current company structures. Do NOT search for purely visual or conceptual diagrams (a generic neural net, parts of a data center, an agentic loop). When in doubt, do not search — drawing from general knowledge is faster and almost always sufficient for teaching diagrams. If you do search, keep it to one or two queries.
+  const system = `You are generating a single self-contained HTML document that will render as a visual slide in a classroom presentation.${searchGuidance}
 
 Requirements:
 - Return ONLY the full HTML document in your final text response. No explanation, no markdown fences, nothing before <!DOCTYPE html> or after </html>.
@@ -369,7 +381,9 @@ Requirements:
     model: MODEL,
     max_tokens: 8000,
     system,
-    tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+    ...(options.enableWebSearch
+      ? { tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }] }
+      : {}),
     messages: [{ role: 'user', content: userPrompt }],
   })
 

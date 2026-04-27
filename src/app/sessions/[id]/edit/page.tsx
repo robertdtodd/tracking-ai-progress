@@ -172,9 +172,11 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
     fetchSession()
   }
 
-  async function generateBeat(beatId: string) {
+  async function generateBeat(beatId: string, opts: { enableWebSearch?: boolean } = {}) {
     const res = await fetch(`/api/sessions/${params.id}/beats/${beatId}/generate`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enableWebSearch: !!opts.enableWebSearch }),
     })
     if (!res.ok) {
       const b = await res.json().catch(() => ({}))
@@ -279,7 +281,7 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
             onUpdate={(patch) => updateBeat(beat.id, patch)}
             onDelete={() => deleteBeat(beat.id)}
             onMove={(dir) => moveBeat(beat.id, dir)}
-            onGenerate={() => generateBeat(beat.id)}
+            onGenerate={(opts) => generateBeat(beat.id, opts)}
             onExpand={() => expandBeat(beat.id)}
           />
         ))}
@@ -379,14 +381,14 @@ function BeatCard({
   onUpdate: (patch: Record<string, unknown>) => void
   onDelete: () => void
   onMove: (dir: -1 | 1) => void
-  onGenerate: () => void
+  onGenerate: (opts?: { enableWebSearch?: boolean }) => void
   onExpand: () => Promise<{ id: string; title: string } | null>
 }) {
   const [generating, setGenerating] = useState(false)
 
-  async function runGenerate() {
+  async function runGenerate(opts?: { enableWebSearch?: boolean }) {
     setGenerating(true)
-    await onGenerate()
+    await onGenerate(opts)
     setGenerating(false)
   }
 
@@ -471,13 +473,14 @@ function SlideBeatEditor({
   bundles: SessionData['course']['bundles']
   courseId: string
   onUpdate: (patch: Record<string, unknown>) => void
-  onGenerate: () => void
+  onGenerate: (opts?: { enableWebSearch?: boolean }) => void
   onExpand: () => Promise<{ id: string; title: string } | null>
   generating: boolean
 }) {
   const [title, setTitle] = useState(beat.title ?? '')
   const [outline, setOutline] = useState(beat.outline ?? '')
   const [expanding, setExpanding] = useState(false)
+  const [withSearch, setWithSearch] = useState(false)
   useEffect(() => {
     setTitle(beat.title ?? '')
     setOutline(beat.outline ?? '')
@@ -561,13 +564,35 @@ function SlideBeatEditor({
           </button>
         )}
         <button
-          onClick={onGenerate}
+          onClick={() => onGenerate({ enableWebSearch: withSearch })}
           disabled={generating || !outline.trim() || dirty}
           style={{ background: 'var(--bg-accent)', color: 'var(--text-accent)' }}
           title={dirty ? 'Save first' : undefined}
         >
-          {generating ? 'Generating…' : beat.generated ? 'Regenerate' : 'Generate'}
+          {generating
+            ? 'Generating…'
+            : (beat.generated ? 'Regenerate' : 'Generate') + (withSearch ? ' (with search)' : '')}
         </button>
+        {(beat.slideType === 'text' || beat.slideType === 'diagram') && (
+          <label
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 11,
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+            }}
+            title="Allow Claude to search the web while generating. Adds latency and cost — use only when current facts matter."
+          >
+            <input
+              type="checkbox"
+              checked={withSearch}
+              onChange={(e) => setWithSearch(e.target.checked)}
+            />
+            web search
+          </label>
+        )}
         {beat.generatedAt && !generating && (
           <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
             Generated {new Date(beat.generatedAt).toLocaleString()}
