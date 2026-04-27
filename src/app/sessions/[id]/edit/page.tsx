@@ -642,12 +642,18 @@ function SlideBeatEditor({
         </a>
       )}
 
-      {beat.generated && <SlidePreview beat={beat} />}
+      {beat.generated && <SlidePreview beat={beat} onUpdate={onUpdate} />}
     </div>
   )
 }
 
-function SlidePreview({ beat }: { beat: Beat }) {
+function SlidePreview({
+  beat,
+  onUpdate,
+}: {
+  beat: Beat
+  onUpdate: (patch: Record<string, unknown>) => void
+}) {
   if (!beat.generated) return null
   if (beat.slideType === 'diagram' && beat.generated.html) {
     return (
@@ -673,20 +679,7 @@ function SlidePreview({ beat }: { beat: Beat }) {
     )
   }
   if (beat.slideType === 'text' && beat.generated.body) {
-    return (
-      <div
-        style={{
-          border: '0.5px solid var(--border-2)',
-          borderRadius: 'var(--radius-md)',
-          padding: 16,
-          background: 'var(--bg-secondary)',
-          marginTop: 4,
-        }}
-      >
-        {beat.title && <h3 style={{ marginTop: 0, marginBottom: 8 }}>{beat.title}</h3>}
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{beat.generated.body}</ReactMarkdown>
-      </div>
-    )
+    return <TextSlidePreview beat={beat} onUpdate={onUpdate} />
   }
   if (beat.slideType === 'chart' && beat.generated.chartType && beat.generated.data) {
     const chart: ChartData = {
@@ -712,6 +705,104 @@ function SlidePreview({ beat }: { beat: Beat }) {
     )
   }
   return null
+}
+
+function TextSlidePreview({
+  beat,
+  onUpdate,
+}: {
+  beat: Beat
+  onUpdate: (patch: Record<string, unknown>) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(beat.generated?.body ?? '')
+
+  useEffect(() => {
+    setDraft(beat.generated?.body ?? '')
+  }, [beat.generated?.body])
+
+  const dirty = editing && draft !== (beat.generated?.body ?? '')
+
+  function save() {
+    onUpdate({ generated: { ...beat.generated, body: draft } })
+    setEditing(false)
+  }
+
+  return (
+    <div
+      style={{
+        border: '0.5px solid var(--border-2)',
+        borderRadius: 'var(--radius-md)',
+        padding: 16,
+        background: 'var(--bg-secondary)',
+        marginTop: 4,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
+        {beat.title && <h3 style={{ margin: 0, flex: 1 }}>{beat.title}</h3>}
+        <div style={{ flex: beat.title ? 0 : 1 }} />
+        {!editing ? (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            style={{ fontSize: 11, padding: '3px 8px' }}
+            title="Edit the slide body. You're editing markdown."
+          >
+            Edit
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!dirty}
+              style={{
+                fontSize: 11,
+                padding: '3px 8px',
+                background: dirty ? 'var(--bg-accent)' : undefined,
+                color: dirty ? 'var(--text-accent)' : undefined,
+              }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(beat.generated?.body ?? '')
+                setEditing(false)
+              }}
+              style={{ fontSize: 11, padding: '3px 8px' }}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+      {editing ? (
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={8}
+          style={{
+            ...textareaStyle,
+            background: 'var(--bg-primary)',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        />
+      ) : (
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{beat.generated?.body ?? ''}</ReactMarkdown>
+      )}
+    </div>
+  )
 }
 
 function BundleSectionEditor({
