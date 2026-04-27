@@ -352,8 +352,10 @@ Use the report_chart_slide tool to return the chart. Keep titles short. Labels s
 export async function generateDiagram(userPrompt: string): Promise<string> {
   const system = `You are generating a single self-contained HTML document that will render as a visual slide in a classroom presentation.
 
+You have access to a web_search tool. Use it ONLY when the diagram needs current factual grounding the user explicitly asked for — e.g. specific 2026 statistics, named recent events, current company structures. Do NOT search for purely visual or conceptual diagrams (a generic neural net, parts of a data center, an agentic loop). When in doubt, do not search — drawing from general knowledge is faster and almost always sufficient for teaching diagrams. If you do search, keep it to one or two queries.
+
 Requirements:
-- Return ONLY the full HTML document. No explanation, no markdown fences, nothing before <!DOCTYPE html> or after </html>.
+- Return ONLY the full HTML document in your final text response. No explanation, no markdown fences, nothing before <!DOCTYPE html> or after </html>.
 - Completely self-contained: no external URLs, no external fonts, no external images, no CDNs. Everything inline.
 - Use inline <style> for CSS and <svg> for diagrams. Use CSS @keyframes for any animation.
 - Dark background (#0a0a0a), light foreground. Use a system sans-serif stack for text.
@@ -367,11 +369,20 @@ Requirements:
     model: MODEL,
     max_tokens: 8000,
     system,
+    tools: [{ type: 'web_search_20260209', name: 'web_search' }],
     messages: [{ role: 'user', content: userPrompt }],
   })
 
-  const block = message.content[0]
-  const text = block.type === 'text' ? block.text : ''
+  if (message.stop_reason === 'pause_turn') {
+    console.warn(
+      '[generateDiagram] stop_reason=pause_turn — server tool loop hit iteration cap; returning whatever text was produced',
+    )
+  }
+
+  // Find the LAST text block — earlier blocks may be server_tool_use / web_search_tool_result.
+  const textBlocks = message.content.filter((b) => b.type === 'text')
+  const last = textBlocks[textBlocks.length - 1]
+  const text = last && last.type === 'text' ? last.text : ''
   const trimmed = text.trim()
   const fenced = trimmed.match(/```(?:html)?\s*([\s\S]*?)```/i)
   return fenced ? fenced[1].trim() : trimmed

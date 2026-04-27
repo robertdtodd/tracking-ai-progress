@@ -11,7 +11,7 @@
     "ingest": "tsx scripts/ingest.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.36.0",
+    "@anthropic-ai/sdk": "^0.91.1",
     "@observablehq/plot": "^0.6.17",
     "@prisma/client": "^5.22.0",
     "abort-controller": "^3.0.0",
