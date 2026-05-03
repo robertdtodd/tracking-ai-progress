@@ -401,7 +401,7 @@ Requirements:
 - Return ONLY the full HTML document in your final text response. No explanation, no markdown fences, nothing before <!DOCTYPE html> or after </html>.
 - Completely self-contained: no external URLs, no external fonts, no external images, no CDNs. Everything inline.
 - Use inline <style> for CSS and <svg> for diagrams. Use CSS @keyframes for any animation.
-- Dark background (#0a0a0a), light foreground. Use a system sans-serif stack for text.
+- Light background (#ffffff), dark foreground (#1a1a1a). Use a system sans-serif stack for text.
 - Fill the viewport: set html, body { height: 100%; margin: 0 } and size the content to the viewport. Use viewBox on SVGs.
 - Design for a 16:9 slide. Center content. Leave comfortable padding.
 - Labels must be readable at presentation distance — font sizes >= 16px for body text, larger for headings.

@@ -131,7 +131,7 @@ export default function Presenter({ session }: { session: SessionData }) {
   if (total === 0) {
     return (
       <div style={{ ...rootStyle, justifyContent: 'center', alignItems: 'center' }}>
-        <div style={{ textAlign: 'center', color: '#aaa' }}>
+        <div style={{ textAlign: 'center', color: '#666' }}>
           <div style={{ fontSize: 24, marginBottom: 12 }}>This session has no beats yet.</div>
           <Link
             href={`/sessions/${session.id}/edit`}
@@ -159,7 +159,7 @@ export default function Presenter({ session }: { session: SessionData }) {
         <div style={{ flex: 1, textAlign: 'center', color: '#666', fontSize: 12 }}>
           {session.course.name} · {session.title}
         </div>
-        <div style={{ color: '#999', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ color: '#666', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
           {idx + 1} / {total}
         </div>
       </div>
@@ -194,7 +194,7 @@ export default function Presenter({ session }: { session: SessionData }) {
           <div style={{ fontSize: 11, color: '#888', marginBottom: 6, letterSpacing: 0.5 }}>
             SPEAKER NOTES
           </div>
-          <div style={{ color: '#eee', fontSize: 16, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+          <div style={{ color: '#1a1a1a', fontSize: 16, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
             {beat.speakerNotes}
           </div>
         </div>
@@ -213,9 +213,9 @@ export default function Presenter({ session }: { session: SessionData }) {
               onClick={() => setIdx(i)}
               style={{
                 ...thumbStyle,
-                borderColor: i === idx ? '#7f77dd' : '#333',
-                background: i === idx ? '#3c3489' : '#1a1a1a',
-                color: i === idx ? '#fff' : '#aaa',
+                borderColor: i === idx ? '#7f77dd' : '#ddd',
+                background: i === idx ? '#7f77dd' : '#f5f5f5',
+                color: i === idx ? '#fff' : '#666',
               }}
               title={beatLabel(b)}
             >
@@ -251,7 +251,7 @@ function BeatRenderer({ beat }: { beat: Beat }) {
   if (beat.kind === 'section_header') {
     return (
       <div style={{ textAlign: 'center', padding: 40 }}>
-        <div style={{ fontSize: 56, fontWeight: 600, color: '#fff', lineHeight: 1.15 }}>
+        <div style={{ fontSize: 56, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.15 }}>
           {beat.title || 'Section'}
         </div>
       </div>
@@ -296,7 +296,7 @@ function BeatRenderer({ beat }: { beat: Beat }) {
     }
     return (
       <div style={{ width: '100%', maxWidth: 1200 }}>
-        <ChartRenderer chart={chart} theme="dark" />
+        <ChartRenderer chart={chart} theme="light" />
       </div>
     )
   }
@@ -353,7 +353,7 @@ function BeatRenderer({ beat }: { beat: Beat }) {
             fontSize: 40,
             fontStyle: 'italic',
             lineHeight: 1.35,
-            color: '#fff',
+            color: '#1a1a1a',
             fontWeight: 300,
           }}
         >
@@ -364,7 +364,7 @@ function BeatRenderer({ beat }: { beat: Beat }) {
             style={{
               marginTop: 24,
               fontSize: 18,
-              color: '#bbb',
+              color: '#666',
               lineHeight: 1.5,
             }}
           >
@@ -390,8 +390,8 @@ function MissingRef({ label }: { label: string }) {
 const rootStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: '#0a0a0a',
-  color: '#eee',
+  background: '#ffffff',
+  color: '#1a1a1a',
   display: 'flex',
   flexDirection: 'column',
   zIndex: 9999,
@@ -403,17 +403,17 @@ const topBarStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 12,
   padding: '12px 20px',
-  borderBottom: '1px solid #1a1a1a',
+  borderBottom: '1px solid #e5e5e5',
 }
 
 const controlLinkStyle: React.CSSProperties = {
-  color: '#bbb',
+  color: '#444',
   textDecoration: 'none',
   fontSize: 13,
   padding: '4px 10px',
-  border: '1px solid #2a2a2a',
+  border: '1px solid #e5e5e5',
   borderRadius: 6,
-  background: '#1a1a1a',
+  background: '#f5f5f5',
 }
 
 const beatAreaStyle: React.CSSProperties = {
@@ -429,7 +429,7 @@ const beatAreaStyle: React.CSSProperties = {
 const slideTitleStyle: React.CSSProperties = {
   fontSize: 28,
   fontWeight: 600,
-  color: '#fff',
+  color: '#1a1a1a',
   marginBottom: 24,
   textAlign: 'center',
 }
@@ -445,7 +445,7 @@ const textSlideContainerStyle: React.CSSProperties = {
 const textSlideBodyStyle: React.CSSProperties = {
   fontSize: 22,
   lineHeight: 1.55,
-  color: '#eee',
+  color: '#1a1a1a',
   width: '100%',
 }
 
@@ -457,16 +457,16 @@ const hintBarStyle: React.CSSProperties = {
   padding: '8px 12px',
   fontSize: 11,
   color: '#666',
-  borderTop: '1px solid #1a1a1a',
+  borderTop: '1px solid #e5e5e5',
 }
 
 const kbdStyle: React.CSSProperties = {
   display: 'inline-block',
   padding: '1px 6px',
-  border: '1px solid #333',
+  border: '1px solid #ddd',
   borderRadius: 4,
-  background: '#1a1a1a',
-  color: '#aaa',
+  background: '#f5f5f5',
+  color: '#666',
   fontFamily: 'inherit',
   fontSize: 10,
 }
@@ -477,9 +477,10 @@ const notesOverlayStyle: React.CSSProperties = {
   right: 24,
   bottom: 80,
   padding: 20,
-  background: 'rgba(20, 20, 20, 0.95)',
-  border: '1px solid #2a2a2a',
+  background: 'rgba(255, 255, 255, 0.97)',
+  border: '1px solid #e5e5e5',
   borderRadius: 12,
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
   maxHeight: '40vh',
   overflowY: 'auto',
 }
@@ -492,8 +493,9 @@ const thumbStripStyle: React.CSSProperties = {
   display: 'flex',
   gap: 8,
   padding: '12px 20px',
-  background: 'rgba(0, 0, 0, 0.85)',
-  borderTop: '1px solid #2a2a2a',
+  background: 'rgba(255, 255, 255, 0.97)',
+  borderTop: '1px solid #e5e5e5',
+  boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.06)',
   overflowX: 'auto',
 }
 
@@ -501,10 +503,10 @@ const thumbStyle: React.CSSProperties = {
   flex: '0 0 auto',
   width: 110,
   height: 70,
-  border: '1px solid #333',
+  border: '1px solid #ddd',
   borderRadius: 6,
-  background: '#1a1a1a',
-  color: '#aaa',
+  background: '#f5f5f5',
+  color: '#666',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'flex-start',
