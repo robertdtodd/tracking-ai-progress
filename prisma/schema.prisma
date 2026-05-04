@@ -92,8 +92,18 @@ model Beat {
   expandedBundleId String?
   expandedBundle   Bundle?    @relation("BeatExpandedBundle", fields: [expandedBundleId], references: [id], onDelete: SetNull)
   speakerNotes String?    @db.Text
+  messages     BeatMessage[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+}
+
+model BeatMessage {
+  id        String   @id @default(cuid())
+  beatId    String
+  beat      Beat     @relation(fields: [beatId], references: [id], onDelete: Cascade)
+  role      String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
 }
 
 model UserArticle {

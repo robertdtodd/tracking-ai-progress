@@ -188,6 +188,86 @@ Respond with your answer directly — no special formatting tags required.`
   return block.type === 'text' ? block.text.trim() : ''
 }
 
+export type BeatContext = {
+  position: number
+  kind: string
+  slideType: string | null
+  title: string | null
+  outline: string | null
+  speakerNotes: string | null
+  textBody: string | null
+  chartSummary: string | null
+  diagramDescription: string | null
+  bundleTitle: string | null
+  bundleSectionKey: string | null
+  highlightQuote: string | null
+  highlightNote: string | null
+}
+
+function formatBeatForContext(b: BeatContext): string {
+  const parts: string[] = []
+  parts.push(`Beat ${b.position + 1} (${b.kind}${b.slideType ? `/${b.slideType}` : ''})`)
+  if (b.title) parts.push(`Title: ${b.title}`)
+  if (b.outline) parts.push(`Outline: ${b.outline}`)
+  if (b.textBody) parts.push(`Text body:\n${b.textBody}`)
+  if (b.chartSummary) parts.push(`Chart: ${b.chartSummary}`)
+  if (b.diagramDescription) parts.push(`Diagram: ${b.diagramDescription}`)
+  if (b.bundleTitle) parts.push(`From lesson: "${b.bundleTitle}"${b.bundleSectionKey ? ` § ${b.bundleSectionKey}` : ''}`)
+  if (b.highlightQuote) parts.push(`Highlight quote: "${b.highlightQuote}"`)
+  if (b.highlightNote) parts.push(`Highlight note: ${b.highlightNote}`)
+  if (b.speakerNotes) parts.push(`Speaker notes: ${b.speakerNotes}`)
+  return parts.join('\n')
+}
+
+export async function discussWithBeat(
+  courseName: string,
+  sessionTitle: string,
+  currentBeat: BeatContext,
+  otherBeats: BeatContext[],
+  chatHistory: { role: string; content: string }[],
+  userMessage: string,
+): Promise<string> {
+  const otherBeatsList = otherBeats
+    .map((b) => `- Beat ${b.position + 1}: ${b.title ?? b.outline ?? `(${b.kind}${b.slideType ? '/' + b.slideType : ''})`}`)
+    .join('\n')
+
+  const system = `You are a knowledgeable discussion partner helping a teacher and students explore a specific slide during a live classroom presentation in an AI literacy course called "${courseName}".
+
+${AUTHOR_VOICE}
+
+CURRENT SESSION: "${sessionTitle}"
+
+ALL BEATS IN THIS SESSION (for navigation context):
+${otherBeatsList || '(none)'}
+
+CURRENT BEAT (the slide on screen right now):
+${formatBeatForContext(currentBeat)}
+
+Your role: answer questions about what is on this slide right now, offer context, surface connections to earlier or later beats in this session, and enrich the discussion. You are anchored to this specific beat — when a question is clearly about this slide, ground your answer in its content. When a question goes beyond, bring in relevant knowledge while being clear about what is from the slide vs. your own synthesis. Reference other beats by their position or title when useful.
+
+BE CONCISE. This is live-classroom support — answers are read aloud or scanned quickly. Default to 2–3 sentences or a single tight paragraph. Expand only when the question genuinely calls for more. No preamble, no "Great question," no throat-clearing — answer directly. If a list is warranted, keep it short (3–4 items max).
+
+Respond with your answer directly — no special formatting tags required.`
+
+  const messages = [
+    ...chatHistory.map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    })),
+    { role: 'user' as const, content: userMessage },
+  ]
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    system,
+    messages,
+  })
+
+  const block = response.content[0]
+  return block.type === 'text' ? block.text.trim() : ''
+}
+
 export type TextSlideContext = {
   courseName?: string
   sessionTitle?: string

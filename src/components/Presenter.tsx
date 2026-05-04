@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import ChartRenderer, { ChartData } from './ChartRenderer'
+import DiscussPanel, { BeatChatMessage } from './DiscussPanel'
 
 type BeatKind = 'slide' | 'bundle_section' | 'highlight_quote' | 'section_header'
 type SlideType = 'text' | 'diagram' | 'chart'
@@ -41,6 +42,7 @@ type Beat = {
     bundleId: string
   } | null
   expandedBundle: { id: string; title: string } | null
+  messages: BeatChatMessage[]
 }
 
 type SessionData = {
@@ -81,6 +83,14 @@ export default function Presenter({ session }: { session: SessionData }) {
   const [idx, setIdx] = useState(0)
   const [showThumbs, setShowThumbs] = useState(false)
   const [showNotes, setShowNotes] = useState(false)
+  const [showDiscuss, setShowDiscuss] = useState(false)
+
+  const initialThreads = useMemo<Record<string, BeatChatMessage[]>>(() => {
+    const map: Record<string, BeatChatMessage[]> = {}
+    for (const b of session.beats) map[b.id] = b.messages ?? []
+    return map
+  }, [session.beats])
+  const [threads, setThreads] = useState<Record<string, BeatChatMessage[]>>(initialThreads)
 
   const total = session.beats.length
 
@@ -91,7 +101,15 @@ export default function Presenter({ session }: { session: SessionData }) {
     function onKey(e: KeyboardEvent) {
       // Don't intercept while user is typing in an input.
       const target = e.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        // Allow Escape to close overlays even while typing
+        if (e.key === 'Escape') {
+          setShowDiscuss(false)
+          setShowNotes(false)
+          setShowThumbs(false)
+        }
+        return
+      }
 
       if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
         e.preventDefault()
@@ -109,8 +127,11 @@ export default function Presenter({ session }: { session: SessionData }) {
         setShowThumbs((s) => !s)
       } else if (e.key === 'n' || e.key === 'N') {
         setShowNotes((s) => !s)
+      } else if (e.key === 'd' || e.key === 'D') {
+        setShowDiscuss((s) => !s)
       } else if (e.key === 'Escape') {
         // exit handled by Link below; just close overlays first
+        setShowDiscuss(false)
         setShowNotes(false)
         setShowThumbs(false)
       }
@@ -164,14 +185,28 @@ export default function Presenter({ session }: { session: SessionData }) {
         </div>
       </div>
 
-      <div
-        style={beatAreaStyle}
-        onClick={(e) => {
-          // Advance only on clicks in the empty surrounding area, not on inner content.
-          if (e.target === e.currentTarget) next()
-        }}
-      >
-        <BeatRenderer beat={beat} />
+      <div style={contentRowStyle}>
+        <div
+          style={beatAreaStyle}
+          onClick={(e) => {
+            // Advance only on clicks in the empty surrounding area, not on inner content.
+            if (e.target === e.currentTarget) next()
+          }}
+        >
+          <BeatRenderer beat={beat} />
+        </div>
+
+        {showDiscuss && (
+          <DiscussPanel
+            beatId={beat.id}
+            beatLabel={beatLabel(beat)}
+            messages={threads[beat.id] ?? []}
+            onMessagesChange={(next) =>
+              setThreads((prev) => ({ ...prev, [beat.id]: next }))
+            }
+            onClose={() => setShowDiscuss(false)}
+          />
+        )}
       </div>
 
       <div style={hintBarStyle}>
@@ -184,6 +219,9 @@ export default function Presenter({ session }: { session: SessionData }) {
         <span style={{ opacity: 0.5 }}>·</span>
         <kbd style={kbdStyle}>N</kbd>
         <span>notes</span>
+        <span style={{ opacity: 0.5 }}>·</span>
+        <kbd style={kbdStyle}>D</kbd>
+        <span>discuss</span>
         <span style={{ opacity: 0.5 }}>·</span>
         <kbd style={kbdStyle}>Esc</kbd>
         <span>exit</span>
@@ -416,6 +454,13 @@ const controlLinkStyle: React.CSSProperties = {
   background: '#f5f5f5',
 }
 
+const contentRowStyle: React.CSSProperties = {
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'row',
+  minHeight: 0,
+}
+
 const beatAreaStyle: React.CSSProperties = {
   flex: 1,
   display: 'flex',
@@ -423,6 +468,7 @@ const beatAreaStyle: React.CSSProperties = {
   justifyContent: 'center',
   padding: '40px 60px',
   minHeight: 0,
+  minWidth: 0,
   cursor: 'pointer',
 }
 

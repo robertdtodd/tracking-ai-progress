@@ -26,6 +26,10 @@ export default async function PresentPage({
               bundleId: true,
             },
           },
+          messages: {
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, role: true, content: true, createdAt: true },
+          },
         },
       },
     },
