@@ -145,13 +145,24 @@ function SlideBlock({ beat }: { beat: Beat }) {
             borderRadius: 'var(--radius-md)',
             overflow: 'hidden',
             background: '#0a0a0a',
+            containerType: 'inline-size',
           }}
         >
           <iframe
             srcDoc={beat.generated.html}
             sandbox="allow-scripts"
             title={beat.title ?? 'Diagram'}
-            style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: 1280,
+              height: 720,
+              border: 0,
+              display: 'block',
+              transformOrigin: 'top left',
+              transform: 'scale(calc(100cqw / 1280))',
+            }}
           />
         </div>
       </div>
