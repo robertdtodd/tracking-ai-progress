@@ -25,24 +25,56 @@ loadEnv()
 
 import { prisma } from '../src/lib/db'
 import { fetchRSSArticles } from '../src/lib/ingest/rss'
+import { fetchArxivArticles } from '../src/lib/ingest/arxiv'
 import { embedArticleIfMissing } from '../src/lib/ingest/embed'
 import type { NormalizedArticle } from '../src/lib/ingest/types'
 
-type IngestConfig = { type: 'rss'; url: string } | { type: string; [k: string]: unknown }
+type RssSource = { type: 'rss'; url: string }
+type ArxivSource = { type: 'arxiv'; query: string; maxResults?: number }
+type SourceConfig = RssSource | ArxivSource | { type: string; [k: string]: unknown }
+
+type FetchedItem = NormalizedArticle & {
+  contentType: 'news' | 'paper'
+  status: 'accepted' | 'pending'
+  abstract: string | null
+}
 
 function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
-async function fetchForTopic(topic: {
-  name: string
-  ingestConfig: unknown
-}): Promise<NormalizedArticle[]> {
-  const cfg = topic.ingestConfig as IngestConfig
-  if (cfg.type === 'rss' && typeof cfg.url === 'string') {
-    return fetchRSSArticles(cfg.url, `rss:${slug(topic.name)}`)
+function normalizeConfig(cfg: unknown): SourceConfig[] {
+  if (Array.isArray(cfg)) return cfg as SourceConfig[]
+  if (cfg && typeof cfg === 'object') return [cfg as SourceConfig]
+  return []
+}
+
+async function fetchSource(
+  topicName: string,
+  src: SourceConfig,
+): Promise<FetchedItem[]> {
+  if (src.type === 'rss' && typeof (src as RssSource).url === 'string') {
+    const items = await fetchRSSArticles((src as RssSource).url, `rss:${slug(topicName)}`)
+    return items.map((a) => ({ ...a, contentType: 'news', status: 'accepted', abstract: null }))
   }
-  console.warn(`  ! Topic "${topic.name}" has unsupported ingest type "${cfg.type}" — skipping`)
+  if (src.type === 'arxiv' && typeof (src as ArxivSource).query === 'string') {
+    const a = src as ArxivSource
+    const items = await fetchArxivArticles(a.query, `arxiv:${slug(topicName)}`, a.maxResults ?? 25)
+    return items.map((it) => ({
+      source: it.source,
+      sourceId: it.sourceId,
+      title: it.title,
+      author: it.author,
+      date: it.date,
+      section: it.section,
+      description: it.description,
+      url: it.url,
+      contentType: 'paper' as const,
+      status: 'pending' as const,
+      abstract: it.abstract,
+    }))
+  }
+  console.warn(`  ! Topic "${topicName}" has unsupported ingest type "${src.type}" — skipping`)
   return []
 }
 
@@ -52,53 +84,71 @@ async function processTopic(topic: {
   ingestConfig: unknown
 }) {
   console.log(`\n=== Topic: ${topic.name} ===`)
-  const articles = await fetchForTopic(topic)
-  console.log(`  Fetched ${articles.length} candidate articles`)
+  const sources = normalizeConfig(topic.ingestConfig)
+  if (sources.length === 0) {
+    console.log(`  (no sources configured)`)
+    return
+  }
 
   let inserted = 0
   let alreadyExisted = 0
   let errored = 0
 
-  for (const a of articles) {
+  for (const src of sources) {
+    console.log(`  → source: ${src.type}`)
+    let items: FetchedItem[] = []
     try {
-      const existing = await prisma.article.findFirst({
-        where: { source: a.source, sourceId: a.sourceId },
-        select: { id: true },
-      })
-
-      let articleId: string
-      if (existing) {
-        articleId = existing.id
-        alreadyExisted++
-      } else {
-        const created = await prisma.article.create({
-          data: {
-            source: a.source,
-            sourceId: a.sourceId,
-            title: a.title,
-            author: a.author,
-            date: a.date,
-            section: a.section,
-            description: a.description,
-            url: a.url,
-            contentType: 'news',
-            status: 'accepted',
-          },
-          select: { id: true },
-        })
-        articleId = created.id
-        inserted++
-        console.log(`  + ${a.date} ${a.title.slice(0, 70)}`)
-      }
-
-      await prisma.topicArticle.upsert({
-        where: { topicId_articleId: { topicId: topic.id, articleId } },
-        create: { topicId: topic.id, articleId },
-        update: {},
-      })
+      items = await fetchSource(topic.name, src)
     } catch (err) {
       errored++
-      console.error(`  ERROR "${a.title.slice(0, 60)}": ${(err as Error).message}`)
+      console.error(`  ERROR fetching ${src.type}: ${(err as Error).message}`)
+      continue
+    }
+    console.log(`    fetched ${items.length} candidates`)
+
+    for (const a of items) {
+      try {
+        const existing = await prisma.article.findFirst({
+          where: { source: a.source, sourceId: a.sourceId },
+          select: { id: true },
+        })
+
+        let articleId: string
+        if (existing) {
+          articleId = existing.id
+          alreadyExisted++
+        } else {
+          const created = await prisma.article.create({
+            data: {
+              source: a.source,
+              sourceId: a.sourceId,
+              title: a.title,
+              author: a.author,
+              date: a.date,
+              section: a.section,
+              description: a.description,
+              url: a.url,
+              abstract: a.abstract,
+              contentType: a.contentType,
+              status: a.status,
+            },
+            select: { id: true },
+          })
+          articleId = created.id
+          inserted++
+          const tag = a.contentType === 'paper' ? '?' : '+'
+          console.log(`    ${tag} ${a.date} ${a.title.slice(0, 70)}`)
+        }
+
+        await prisma.topicArticle.upsert({
+          where: { topicId_articleId: { topicId: topic.id, articleId } },
+          create: { topicId: topic.id, articleId },
+          update: {},
+        })
+      } catch (err) {
+        errored++
+        console.error(`    ERROR "${a.title.slice(0, 60)}": ${(err as Error).message}`)
+      }
     }
   }
 

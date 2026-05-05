@@ -28,10 +28,17 @@ import { prisma } from '../src/lib/db'
 async function main() {
   const name = 'AI Skills'
   const description = 'what does it look like to be good at interacting with machine intelligence'
-  const ingestConfig = {
-    type: 'rss',
-    url: 'https://simonwillison.net/atom/everything/',
-  }
+  const ingestConfig = [
+    {
+      type: 'rss',
+      url: 'https://simonwillison.net/atom/everything/',
+    },
+    {
+      type: 'arxiv',
+      query: 'prompt engineering',
+      maxResults: 25,
+    },
+  ]
 
   const topic = await prisma.topic.upsert({
     where: { name },
