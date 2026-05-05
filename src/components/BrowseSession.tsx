@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -133,40 +134,7 @@ function SlideBlock({ beat }: { beat: Beat }) {
   }
 
   if (beat.slideType === 'diagram' && beat.generated.html) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {beat.title && <h3 style={slideTitleStyle}>{beat.title}</h3>}
-        <div
-          style={{
-            position: 'relative',
-            width: '100%',
-            aspectRatio: '16 / 9',
-            border: '0.5px solid var(--border-1)',
-            borderRadius: 'var(--radius-md)',
-            overflow: 'hidden',
-            background: '#0a0a0a',
-            containerType: 'inline-size',
-          }}
-        >
-          <iframe
-            srcDoc={beat.generated.html}
-            sandbox="allow-scripts"
-            title={beat.title ?? 'Diagram'}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: 1280,
-              height: 720,
-              border: 0,
-              display: 'block',
-              transformOrigin: 'top left',
-              transform: 'scale(calc(100cqw / 1280))',
-            }}
-          />
-        </div>
-      </div>
-    )
+    return <DiagramBeat title={beat.title} html={beat.generated.html} />
   }
 
   if (beat.slideType === 'text' && beat.generated.body) {
@@ -204,6 +172,61 @@ function SlideBlock({ beat }: { beat: Beat }) {
   }
 
   return null
+}
+
+const DIAGRAM_DESIGN_WIDTH = 1280
+const DIAGRAM_DESIGN_HEIGHT = 720
+
+function DiagramBeat({ title, html }: { title: string | null; html: string }) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(0)
+
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    setScale(el.clientWidth / DIAGRAM_DESIGN_WIDTH)
+    const ro = new ResizeObserver(([entry]) => {
+      setScale(entry.contentRect.width / DIAGRAM_DESIGN_WIDTH)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {title && <h3 style={slideTitleStyle}>{title}</h3>}
+      <div
+        ref={wrapperRef}
+        style={{
+          position: 'relative',
+          width: '100%',
+          aspectRatio: '16 / 9',
+          border: '0.5px solid var(--border-1)',
+          borderRadius: 'var(--radius-md)',
+          overflow: 'hidden',
+          background: '#0a0a0a',
+        }}
+      >
+        <iframe
+          srcDoc={html}
+          sandbox="allow-scripts"
+          title={title ?? 'Diagram'}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: DIAGRAM_DESIGN_WIDTH,
+            height: DIAGRAM_DESIGN_HEIGHT,
+            border: 0,
+            display: 'block',
+            transformOrigin: 'top left',
+            transform: `scale(${scale})`,
+            opacity: scale === 0 ? 0 : 1,
+          }}
+        />
+      </div>
+    </div>
+  )
 }
 
 function BundleSectionBlock({ beat }: { beat: Beat }) {
