@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
 export async function GET() {
-  const userArticles = await prisma.userArticle.findMany({ orderBy: { createdAt: 'desc' } })
+  const userArticles = await prisma.article.findMany({ orderBy: { createdAt: 'desc' } })
   return NextResponse.json(
     userArticles.map((ua) => ({
       d: ua.date,
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     )
   }
 
-  const ua = await prisma.userArticle.create({
+  const ua = await prisma.article.create({
     data: {
       title: title.trim(),
       author: author?.trim() || null,

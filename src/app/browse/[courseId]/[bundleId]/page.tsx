@@ -37,7 +37,7 @@ export default async function BrowseBundlePage({
 
   const editor = await isEditor()
 
-  const articles = await prisma.userArticle.findMany({
+  const articles = await prisma.article.findMany({
     where: { title: { in: bundle.articleTitles } },
     select: {
       title: true,

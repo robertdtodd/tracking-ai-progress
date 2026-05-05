@@ -2,7 +2,7 @@ import { prisma } from './db'
 import { Article } from './articles'
 
 export async function getAllArticles(): Promise<Article[]> {
-  const userArticles = await prisma.userArticle.findMany({ orderBy: { createdAt: 'desc' } })
+  const userArticles = await prisma.article.findMany({ orderBy: { createdAt: 'desc' } })
   return userArticles.map((ua) => ({
     d: ua.date,
     sec: ua.section,

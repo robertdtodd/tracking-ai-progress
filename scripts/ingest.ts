@@ -24,107 +24,138 @@ function loadEnv() {
 loadEnv()
 
 import { prisma } from '../src/lib/db'
-import { fetchNytAIArticles } from '../src/lib/ingest/nyt'
-import { fetchGuardianAIArticles } from '../src/lib/ingest/guardian'
-import { classifyArticle } from '../src/lib/ingest/classify'
+import { fetchRSSArticles } from '../src/lib/ingest/rss'
+import { embedArticleIfMissing } from '../src/lib/ingest/embed'
 import type { NormalizedArticle } from '../src/lib/ingest/types'
 
-type Stats = { inserted: number; skippedExisting: number; skippedIrrelevant: number; errored: number }
+type IngestConfig = { type: 'rss'; url: string } | { type: string; [k: string]: unknown }
 
-async function processArticles(sourceLabel: string, articles: NormalizedArticle[]): Promise<Stats> {
-  console.log(`\nFetched ${articles.length} ${sourceLabel} articles. Classifying + persisting…\n`)
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
 
-  const stats: Stats = { inserted: 0, skippedExisting: 0, skippedIrrelevant: 0, errored: 0 }
+async function fetchForTopic(topic: {
+  name: string
+  ingestConfig: unknown
+}): Promise<NormalizedArticle[]> {
+  const cfg = topic.ingestConfig as IngestConfig
+  if (cfg.type === 'rss' && typeof cfg.url === 'string') {
+    return fetchRSSArticles(cfg.url, `rss:${slug(topic.name)}`)
+  }
+  console.warn(`  ! Topic "${topic.name}" has unsupported ingest type "${cfg.type}" — skipping`)
+  return []
+}
 
-  for (let i = 0; i < articles.length; i++) {
-    const a = articles[i]
-    const prefix = `[${sourceLabel} ${i + 1}/${articles.length}]`
+async function processTopic(topic: {
+  id: string
+  name: string
+  ingestConfig: unknown
+}) {
+  console.log(`\n=== Topic: ${topic.name} ===`)
+  const articles = await fetchForTopic(topic)
+  console.log(`  Fetched ${articles.length} candidate articles`)
 
-    if (!a.sourceId || !a.title) {
-      console.log(`${prefix} SKIP (no id/title)`)
-      stats.errored++
-      continue
-    }
+  let inserted = 0
+  let alreadyExisted = 0
+  let errored = 0
 
-    const existing = await prisma.userArticle.findFirst({
-      where: { source: a.source, sourceId: a.sourceId },
-    })
-    if (existing) {
-      stats.skippedExisting++
-      continue
-    }
-
+  for (const a of articles) {
     try {
-      const cls = await classifyArticle(a.title, a.description)
-      if (!cls.relevant) {
-        stats.skippedIrrelevant++
-        continue
+      const existing = await prisma.article.findFirst({
+        where: { source: a.source, sourceId: a.sourceId },
+        select: { id: true },
+      })
+
+      let articleId: string
+      if (existing) {
+        articleId = existing.id
+        alreadyExisted++
+      } else {
+        const created = await prisma.article.create({
+          data: {
+            source: a.source,
+            sourceId: a.sourceId,
+            title: a.title,
+            author: a.author,
+            date: a.date,
+            section: a.section,
+            description: a.description,
+            url: a.url,
+            contentType: 'news',
+            status: 'accepted',
+          },
+          select: { id: true },
+        })
+        articleId = created.id
+        inserted++
+        console.log(`  + ${a.date} ${a.title.slice(0, 70)}`)
       }
 
-      await prisma.userArticle.create({
-        data: {
-          source: a.source,
-          sourceId: a.sourceId,
-          title: a.title,
-          author: a.author,
-          date: a.date,
-          section: a.section,
-          description: a.description,
-          url: a.url,
-          themes: cls.themes,
-        },
+      await prisma.topicArticle.upsert({
+        where: { topicId_articleId: { topicId: topic.id, articleId } },
+        create: { topicId: topic.id, articleId },
+        update: {},
       })
-      stats.inserted++
-      console.log(`${prefix} + ${a.date} ${a.title.slice(0, 70)}`)
     } catch (err) {
-      stats.errored++
-      console.error(`${prefix} ERROR: ${(err as Error).message}`)
+      errored++
+      console.error(`  ERROR "${a.title.slice(0, 60)}": ${(err as Error).message}`)
     }
   }
 
-  return stats
+  console.log(`  Inserted: ${inserted} | Already had: ${alreadyExisted} | Errored: ${errored}`)
+}
+
+async function runEmbeddings() {
+  console.log(`\n=== Embeddings: backfilling accepted articles ===`)
+  const articles = await prisma.article.findMany({
+    where: { status: 'accepted', embeddings: { none: {} } },
+    select: { id: true, title: true, description: true, abstract: true, fullText: true },
+    take: 1000,
+  })
+  console.log(`  ${articles.length} articles missing embeddings`)
+
+  let embedded = 0
+  let skipped = 0
+  let errored = 0
+  for (let i = 0; i < articles.length; i++) {
+    const a = articles[i]
+    try {
+      const r = await embedArticleIfMissing(a)
+      if (r === 'embedded') embedded++
+      else skipped++
+      if ((i + 1) % 10 === 0) console.log(`  ${i + 1}/${articles.length} processed`)
+    } catch (err) {
+      errored++
+      console.error(`  ERROR "${a.title.slice(0, 60)}": ${(err as Error).message}`)
+    }
+  }
+  console.log(`  Embedded: ${embedded} | Skipped: ${skipped} | Errored: ${errored}`)
 }
 
 async function main() {
-  const from = process.env.FROM || '2024-01-01'
-  const to = process.env.TO || new Date().toISOString().slice(0, 10)
-  const sources = (process.env.SOURCES || 'nyt,guardian').split(',').map((s) => s.trim().toLowerCase())
+  const topicFilter = process.env.TOPIC
+  const skipEmbeddings = process.env.SKIP_EMBEDDINGS === '1'
 
-  const totals: Stats = { inserted: 0, skippedExisting: 0, skippedIrrelevant: 0, errored: 0 }
+  const topics = await prisma.topic.findMany({
+    where: topicFilter ? { name: topicFilter } : {},
+    orderBy: { createdAt: 'asc' },
+  })
 
-  if (sources.includes('nyt')) {
-    console.log(`\n=== NYT ingestion: ${from} → ${to} ===\n`)
-    const nytArticles = await fetchNytAIArticles({
-      beginDate: from,
-      endDate: to,
-      onProgress: (s) => console.log(s),
-    })
-    const s = await processArticles('NYT', nytArticles)
-    totals.inserted += s.inserted
-    totals.skippedExisting += s.skippedExisting
-    totals.skippedIrrelevant += s.skippedIrrelevant
-    totals.errored += s.errored
+  if (topics.length === 0) {
+    console.log('No topics found. Run `npx tsx scripts/seed_topic.ts` to create one.')
+    await prisma.$disconnect()
+    return
   }
 
-  if (sources.includes('guardian')) {
-    console.log(`\n=== Guardian ingestion: ${from} → ${to} ===\n`)
-    const guardianArticles = await fetchGuardianAIArticles({
-      beginDate: from,
-      endDate: to,
-      onProgress: (s) => console.log(s),
-    })
-    const s = await processArticles('Guardian', guardianArticles)
-    totals.inserted += s.inserted
-    totals.skippedExisting += s.skippedExisting
-    totals.skippedIrrelevant += s.skippedIrrelevant
-    totals.errored += s.errored
+  for (const t of topics) {
+    await processTopic(t)
   }
 
-  console.log(`\n=== Totals ===`)
-  console.log(`Inserted:             ${totals.inserted}`)
-  console.log(`Skipped (existing):   ${totals.skippedExisting}`)
-  console.log(`Skipped (not AI):     ${totals.skippedIrrelevant}`)
-  console.log(`Errored:              ${totals.errored}`)
+  if (!skipEmbeddings) {
+    await runEmbeddings()
+  } else {
+    console.log('\n(SKIP_EMBEDDINGS=1 set — skipping embedding step)')
+  }
 
   await prisma.$disconnect()
 }

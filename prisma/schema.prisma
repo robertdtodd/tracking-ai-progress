@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 model Course {
@@ -106,19 +108,59 @@ model BeatMessage {
   createdAt DateTime @default(now())
 }
 
-model UserArticle {
-  id          String   @id @default(cuid())
+model Article {
+  id          String             @id @default(cuid())
   date        String
   section     String
   title       String
   author      String?
-  themes      Json     @default("{}")
-  source      String   @default("user")
+  themes      Json               @default("{}")
+  source      String             @default("user")
   description String?
   url         String?
   sourceId    String?
-  ingestedAt  DateTime @default(now())
-  createdAt   DateTime @default(now())
+  contentType String             @default("news")
+  status      String             @default("accepted")
+  abstract    String?            @db.Text
+  fullText    String?            @db.Text
+  reviewedAt  DateTime?
+  ingestedAt  DateTime           @default(now())
+  createdAt   DateTime           @default(now())
+  topics      TopicArticle[]
+  embeddings  ArticleEmbedding[]
 
   @@unique([source, sourceId])
+  @@map("UserArticle")
+}
+
+model Topic {
+  id           String         @id @default(cuid())
+  name         String         @unique
+  description  String         @db.Text
+  ingestConfig Json
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  articles     TopicArticle[]
+}
+
+model TopicArticle {
+  topicId    String
+  articleId  String
+  topic      Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  article    Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@id([topicId, articleId])
+}
+
+model ArticleEmbedding {
+  id         String                      @id @default(cuid())
+  articleId  String
+  article    Article                     @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  chunkIndex Int                         @default(0)
+  text       String                      @db.Text
+  embedding  Unsupported("vector(1536)")
+  createdAt  DateTime                    @default(now())
+
+  @@unique([articleId, chunkIndex])
 }

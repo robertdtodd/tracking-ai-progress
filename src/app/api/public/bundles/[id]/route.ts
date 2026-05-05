@@ -26,7 +26,7 @@ export async function GET(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const articles = await prisma.userArticle.findMany({
+  const articles = await prisma.article.findMany({
     where: { title: { in: bundle.articleTitles } },
     select: {
       title: true,

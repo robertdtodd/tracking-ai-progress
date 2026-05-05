@@ -65,7 +65,7 @@ export async function POST(req: Request) {
           stats.errored++
           return
         }
-        const existing = await prisma.userArticle.findFirst({
+        const existing = await prisma.article.findFirst({
           where: { source: a.source, sourceId: a.sourceId },
         })
         if (existing) {
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
             stats.skippedIrrelevant++
             return
           }
-          await prisma.userArticle.create({
+          await prisma.article.create({
             data: {
               source: a.source,
               sourceId: a.sourceId,
