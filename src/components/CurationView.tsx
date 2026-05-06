@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export type PendingArticle = {
@@ -19,9 +20,45 @@ export type PendingArticle = {
 
 type Status = 'pending' | 'accepting' | 'rejecting' | 'accepted' | 'rejected' | 'error'
 
+type IngestStats = {
+  topicsProcessed: number
+  inserted: number
+  alreadyExisted: number
+  ingestErrored: number
+  embedded: number
+  summarized: number
+  embedErrored: number
+  summaryErrored: number
+  durationMs: number
+}
+
 export default function CurationView({ articles }: { articles: PendingArticle[] }) {
+  const router = useRouter()
   const [statusById, setStatusById] = useState<Record<string, Status>>({})
   const [errorById, setErrorById] = useState<Record<string, string>>({})
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshResult, setRefreshResult] = useState<IngestStats | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+
+  async function handleRefresh() {
+    if (refreshing) return
+    setRefreshing(true)
+    setRefreshResult(null)
+    setRefreshError(null)
+    try {
+      const res = await fetch('/api/ingest/run', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || res.statusText)
+      }
+      setRefreshResult(data.stats as IngestStats)
+      router.refresh()
+    } catch (err) {
+      setRefreshError((err as Error).message)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   async function handleAccept(id: string) {
     setStatusById((s) => ({ ...s, [id]: 'accepting' }))
@@ -85,10 +122,62 @@ export default function CurationView({ articles }: { articles: PendingArticle[] 
               : `${remaining} pending · ${reviewed} reviewed this session`}
           </div>
         </div>
-        <Link href="/" style={{ fontSize: 13, color: 'var(--text-secondary)', textDecoration: 'none' }}>
-          ← Back
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              padding: '6px 14px',
+              background: refreshing ? 'var(--bg-secondary)' : '#7f77dd',
+              color: refreshing ? 'var(--text-secondary)' : '#fff',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              cursor: refreshing ? 'wait' : 'pointer',
+            }}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh now'}
+          </button>
+          <Link href="/" style={{ fontSize: 13, color: 'var(--text-secondary)', textDecoration: 'none' }}>
+            ← Back
+          </Link>
+        </div>
       </div>
+
+      {refreshResult && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '8px 12px',
+            fontSize: 12,
+            color: 'var(--text-secondary)',
+            background: 'var(--bg-tertiary)',
+            border: '0.5px solid var(--border-1)',
+            borderRadius: 'var(--radius-md)',
+          }}
+        >
+          Refreshed in {(refreshResult.durationMs / 1000).toFixed(1)}s · inserted {refreshResult.inserted} · embedded {refreshResult.embedded} · summarized {refreshResult.summarized}
+          {refreshResult.ingestErrored + refreshResult.embedErrored + refreshResult.summaryErrored > 0
+            ? ` · errors ${refreshResult.ingestErrored + refreshResult.embedErrored + refreshResult.summaryErrored}`
+            : ''}
+        </div>
+      )}
+      {refreshError && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '8px 12px',
+            fontSize: 12,
+            color: '#c0392b',
+            background: 'rgba(192, 57, 43, 0.08)',
+            border: '1px solid rgba(192, 57, 43, 0.2)',
+            borderRadius: 'var(--radius-md)',
+          }}
+        >
+          Refresh failed: {refreshError}
+        </div>
+      )}
 
       {total === 0 && (
         <div style={emptyStyle}>

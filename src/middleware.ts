@@ -6,6 +6,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/browse',
   '/api/auth',
   '/api/public',
+  '/api/cron',
   '/_next',
   '/favicon',
 ]
