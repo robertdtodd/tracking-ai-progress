@@ -27,6 +27,7 @@ import { prisma } from '../src/lib/db'
 import { fetchRSSArticles } from '../src/lib/ingest/rss'
 import { fetchArxivArticles } from '../src/lib/ingest/arxiv'
 import { embedArticleIfMissing } from '../src/lib/ingest/embed'
+import { summarizeArticleIfMissing } from '../src/lib/ingest/summarize'
 import type { NormalizedArticle } from '../src/lib/ingest/types'
 
 type RssSource = { type: 'rss'; url: string }
@@ -182,9 +183,46 @@ async function runEmbeddings() {
   console.log(`  Embedded: ${embedded} | Skipped: ${skipped} | Errored: ${errored}`)
 }
 
+async function runSummaries() {
+  console.log(`\n=== Summaries: backfilling accepted articles ===`)
+  const articles = await prisma.article.findMany({
+    where: { status: 'accepted', summary: null },
+    select: {
+      id: true,
+      title: true,
+      author: true,
+      date: true,
+      description: true,
+      abstract: true,
+      fullText: true,
+      url: true,
+    },
+    take: 1000,
+  })
+  console.log(`  ${articles.length} articles missing summaries`)
+
+  let summarized = 0
+  let skipped = 0
+  let errored = 0
+  for (let i = 0; i < articles.length; i++) {
+    const a = articles[i]
+    try {
+      const r = await summarizeArticleIfMissing(a)
+      if (r === 'summarized') summarized++
+      else skipped++
+      if ((i + 1) % 10 === 0) console.log(`  ${i + 1}/${articles.length} processed`)
+    } catch (err) {
+      errored++
+      console.error(`  ERROR "${a.title.slice(0, 60)}": ${(err as Error).message}`)
+    }
+  }
+  console.log(`  Summarized: ${summarized} | Skipped: ${skipped} | Errored: ${errored}`)
+}
+
 async function main() {
   const topicFilter = process.env.TOPIC
   const skipEmbeddings = process.env.SKIP_EMBEDDINGS === '1'
+  const skipSummaries = process.env.SKIP_SUMMARIES === '1'
 
   const topics = await prisma.topic.findMany({
     where: topicFilter ? { name: topicFilter } : {},
@@ -205,6 +243,12 @@ async function main() {
     await runEmbeddings()
   } else {
     console.log('\n(SKIP_EMBEDDINGS=1 set — skipping embedding step)')
+  }
+
+  if (!skipSummaries) {
+    await runSummaries()
+  } else {
+    console.log('\n(SKIP_SUMMARIES=1 set — skipping summary step)')
   }
 
   await prisma.$disconnect()

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { embedArticleIfMissing } from '@/lib/ingest/embed'
+import { summarizeArticleIfMissing } from '@/lib/ingest/summarize'
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function POST(
   _req: Request,
@@ -13,9 +14,12 @@ export async function POST(
     select: {
       id: true,
       title: true,
+      author: true,
+      date: true,
       description: true,
       abstract: true,
       fullText: true,
+      url: true,
       status: true,
     },
   })
@@ -29,7 +33,6 @@ export async function POST(
     data: { status: 'accepted', reviewedAt: new Date() },
   })
 
-  // Embed inline so accepted papers are immediately queryable
   let embedStatus: 'embedded' | 'skipped' | 'error' = 'skipped'
   let embedError: string | null = null
   try {
@@ -39,5 +42,20 @@ export async function POST(
     embedError = (err as Error).message
   }
 
-  return NextResponse.json({ ok: true, embedStatus, embedError })
+  let summaryStatus: 'summarized' | 'skipped' | 'error' = 'skipped'
+  let summaryError: string | null = null
+  try {
+    summaryStatus = await summarizeArticleIfMissing(article)
+  } catch (err) {
+    summaryStatus = 'error'
+    summaryError = (err as Error).message
+  }
+
+  return NextResponse.json({
+    ok: true,
+    embedStatus,
+    embedError,
+    summaryStatus,
+    summaryError,
+  })
 }

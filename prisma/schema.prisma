@@ -123,11 +123,13 @@ model Article {
   status      String             @default("accepted")
   abstract    String?            @db.Text
   fullText    String?            @db.Text
+  summary     String?            @db.Text
   reviewedAt  DateTime?
   ingestedAt  DateTime           @default(now())
   createdAt   DateTime           @default(now())
   topics      TopicArticle[]
   embeddings  ArticleEmbedding[]
+  supports    ArticleSupport[]
 
   @@unique([source, sourceId])
   @@map("UserArticle")
@@ -141,6 +143,43 @@ model Topic {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   articles     TopicArticle[]
+  insights     InsightTopic[]
+}
+
+model Insight {
+  id            String           @id @default(cuid())
+  title         String
+  slug          String           @unique
+  stance        String           @default("working_hypothesis")
+  bottomLine    String           @default("") @db.Text
+  rationale     String           @default("") @db.Text
+  openQuestions String           @default("") @db.Text
+  author        String           @default("human")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  topics        InsightTopic[]
+  supports      ArticleSupport[]
+}
+
+model InsightTopic {
+  insightId String
+  topicId   String
+  insight   Insight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+  topic     Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([insightId, topicId])
+}
+
+model ArticleSupport {
+  insightId String
+  articleId String
+  insight   Insight  @relation(fields: [insightId], references: [id], onDelete: Cascade)
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  relevance String   @default("supports")
+  excerpt   String?  @db.Text
+  addedAt   DateTime @default(now())
+
+  @@id([insightId, articleId])
 }
 
 model TopicArticle {

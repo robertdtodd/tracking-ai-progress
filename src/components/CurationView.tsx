@@ -10,6 +10,7 @@ export type PendingArticle = {
   date: string
   abstract: string | null
   description: string | null
+  summary: string | null
   url: string | null
   source: string
   contentType: string
@@ -120,8 +121,8 @@ export default function CurationView({ articles }: { articles: PendingArticle[] 
                   ))}
                 </div>
               )}
-              {(a.abstract || a.description) && (
-                <p style={abstractStyle}>{a.abstract ?? a.description}</p>
+              {(a.summary || a.abstract || a.description) && (
+                <p style={abstractStyle}>{a.summary ?? a.abstract ?? a.description}</p>
               )}
               <div style={actionsRowStyle}>
                 {a.url && (

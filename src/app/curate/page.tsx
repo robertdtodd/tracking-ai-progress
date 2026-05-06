@@ -21,6 +21,7 @@ export default async function CuratePage() {
     date: a.date,
     abstract: a.abstract,
     description: a.description,
+    summary: a.summary,
     url: a.url,
     source: a.source,
     contentType: a.contentType,
