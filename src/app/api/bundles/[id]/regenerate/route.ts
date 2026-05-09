@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { generateBundleContent } from '@/lib/claude'
 import { getAllArticles } from '@/lib/getAllArticles'
 
-export const maxDuration = 120
+export const maxDuration = 300
 
 export async function POST(
   _req: Request,
