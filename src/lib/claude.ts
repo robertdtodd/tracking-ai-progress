@@ -530,8 +530,9 @@ Requirements:
 - Completely self-contained: no external URLs, no external fonts, no external images, no CDNs. Everything inline.
 - Use inline <style> for CSS and <svg> for diagrams. Use CSS @keyframes for any animation.
 ${defaultPalette}
-- Fill the viewport: set html, body { height: 100%; margin: 0 } and size the content to the viewport. Use viewBox on SVGs.
+- Fit the viewport exactly: html and body must be { height: 100vh; width: 100vw; margin: 0; overflow: hidden; box-sizing: border-box }. The slide MUST fit entirely on screen — no scrolling, no content extending past the bottom. Use viewBox on SVGs so they scale with the viewport.
 - Design for a 16:9 slide. Center content. Leave comfortable padding.
+- BREVITY OVER DENSITY: if your content does not fit at the type sizes specified by the style guide, write less — fewer bullets, shorter sentences, fewer sections. Do not shrink type below the minimums to make room. A slide should hold one clear idea.
 - Labels must be readable at presentation distance — font sizes >= 16px for body text, larger for headings.
 - Inline <script> is allowed only if needed for an animation or interaction that CSS alone can't do. Never use fetch, XMLHttpRequest, localStorage, cookies, or any DOM API that reaches outside the document.
 - Prefer clarity over decoration. A teacher is showing this to students — it should teach something at a glance.`
