@@ -42,7 +42,7 @@ export async function POST(
   const beat = await prisma.beat.findUnique({
     where: { id: params.beatId },
     include: {
-      session: { include: { course: true } },
+      session: { include: { course: true, style: true } },
       bundle: true,
     },
   })
@@ -89,11 +89,13 @@ export async function POST(
       .filter((b) => b.outline !== null || b.body !== null)
   }
 
+  const styleGuide = beat.session.style?.body ?? null
+
   let generated: unknown
   let resolvedTitle: string | null = beat.title
 
   if (beat.slideType === 'diagram') {
-    const html = await generateDiagram(beat.outline, priorBeats)
+    const html = await generateDiagram(beat.outline, priorBeats, styleGuide)
     generated = { html }
   } else if (beat.slideType === 'text') {
     const allArticles = beat.bundle ? await getAllArticles() : undefined
@@ -105,6 +107,7 @@ export async function POST(
       articleTitles: beat.bundle?.articleTitles,
       allArticles,
       priorBeats,
+      styleGuide,
     })
     generated = { body: result.body }
     if (!resolvedTitle && result.title) resolvedTitle = result.title
@@ -125,6 +128,7 @@ export async function POST(
       articleTitles: beat.bundle?.articleTitles,
       allArticles,
       priorBeats,
+      styleGuide,
     })
     generated = {
       chartType: result.chartType,

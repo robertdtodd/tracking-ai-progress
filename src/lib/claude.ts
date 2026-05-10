@@ -283,6 +283,12 @@ export type TextSlideContext = {
   articleTitles?: string[]
   allArticles?: Article[]
   priorBeats?: PriorSequenceBeat[]
+  styleGuide?: string | null
+}
+
+function formatStyleGuide(styleGuide: string | null | undefined): string | null {
+  if (!styleGuide || !styleGuide.trim()) return null
+  return `VISUAL STYLE GUIDE FOR THIS SESSION (apply consistently — palette, typography, layout, mood):\n\n${styleGuide.trim()}`
 }
 
 function formatPriorBeats(priorBeats: PriorSequenceBeat[] | undefined): string | null {
@@ -319,6 +325,8 @@ export async function generateTextSlide(
   }
   const priorBlock = formatPriorBeats(context.priorBeats)
   if (priorBlock) contextParts.push(priorBlock)
+  const styleBlock = formatStyleGuide(context.styleGuide)
+  if (styleBlock) contextParts.push(styleBlock)
   const contextBlock = contextParts.length ? contextParts.join('\n\n') : '(no additional context)'
 
   // Stable persona/voice/format block — cached for cost efficiency across slide generations.
@@ -383,6 +391,8 @@ export async function generateChartSlide(
   }
   const priorBlock = formatPriorBeats(context.priorBeats)
   if (priorBlock) contextParts.push(priorBlock)
+  const styleBlock = formatStyleGuide(context.styleGuide)
+  if (styleBlock) contextParts.push(styleBlock)
   const contextBlock = contextParts.length ? contextParts.join('\n\n') : '(no additional context)'
 
   const personaBlock = `You are generating a single chart slide for a classroom presentation.
@@ -506,14 +516,20 @@ ${outline}`
 export async function generateDiagram(
   userPrompt: string,
   priorBeats?: PriorSequenceBeat[],
+  styleGuide?: string | null,
 ): Promise<string> {
+  const styleBlock = formatStyleGuide(styleGuide)
+  const defaultPalette = styleBlock
+    ? '- The visual style guide below specifies palette, typography, and layout. Follow it. Ignore any default look that would conflict.'
+    : '- Light background (#ffffff), dark foreground (#1a1a1a). Use a system sans-serif stack for text.'
+
   const system = `You are generating a single self-contained HTML document that will render as a visual slide in a classroom presentation.
 
 Requirements:
 - Return ONLY the full HTML document in your final text response. No explanation, no markdown fences, nothing before <!DOCTYPE html> or after </html>.
 - Completely self-contained: no external URLs, no external fonts, no external images, no CDNs. Everything inline.
 - Use inline <style> for CSS and <svg> for diagrams. Use CSS @keyframes for any animation.
-- Light background (#ffffff), dark foreground (#1a1a1a). Use a system sans-serif stack for text.
+${defaultPalette}
 - Fill the viewport: set html, body { height: 100%; margin: 0 } and size the content to the viewport. Use viewBox on SVGs.
 - Design for a 16:9 slide. Center content. Leave comfortable padding.
 - Labels must be readable at presentation distance — font sizes >= 16px for body text, larger for headings.
@@ -521,7 +537,8 @@ Requirements:
 - Prefer clarity over decoration. A teacher is showing this to students — it should teach something at a glance.`
 
   const priorBlock = formatPriorBeats(priorBeats)
-  const fullSystem = priorBlock ? `${system}\n\n${priorBlock}` : system
+  const extras = [styleBlock, priorBlock].filter(Boolean).join('\n\n')
+  const fullSystem = extras ? `${system}\n\n${extras}` : system
 
   const message = await anthropic.messages.create({
     model: MODEL,

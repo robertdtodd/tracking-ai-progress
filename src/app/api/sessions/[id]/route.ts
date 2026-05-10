@@ -48,6 +48,9 @@ export async function PATCH(
     data.published = body.published
     data.publishedAt = body.published ? new Date() : null
   }
+  if (typeof body.styleId === 'string' || body.styleId === null) {
+    data.styleId = body.styleId
+  }
   const session = await prisma.session.update({
     where: { id: params.id },
     data,

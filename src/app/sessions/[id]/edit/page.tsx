@@ -51,11 +51,13 @@ type Beat = {
   expandedBundleId: string | null
   expandedBundle: { id: string; title: string } | null
 }
+type StyleOption = { id: string; name: string }
 type SessionData = {
   id: string
   courseId: string
   title: string
   description: string | null
+  styleId: string | null
   published: boolean
   course: {
     id: string
@@ -94,6 +96,7 @@ function splitByH2(content: string): { heading: string; body: string }[] {
 
 export default function SessionEditor({ params }: { params: { id: string } }) {
   const [session, setSession] = useState<SessionData | null>(null)
+  const [styles, setStyles] = useState<StyleOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [savingMeta, setSavingMeta] = useState(false)
@@ -110,11 +113,20 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
     setLoading(false)
   }, [params.id])
 
+  const fetchStyles = useCallback(async () => {
+    const res = await fetch('/api/styles')
+    if (res.ok) {
+      const data = await res.json()
+      setStyles(data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })))
+    }
+  }, [])
+
   useEffect(() => {
     fetchSession()
-  }, [fetchSession])
+    fetchStyles()
+  }, [fetchSession, fetchStyles])
 
-  async function saveMeta(patch: Partial<Pick<SessionData, 'title' | 'description'>>) {
+  async function saveMeta(patch: Partial<Pick<SessionData, 'title' | 'description' | 'styleId'>>) {
     setSavingMeta(true)
     await fetch(`/api/sessions/${params.id}`, {
       method: 'PATCH',
@@ -308,7 +320,12 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
         </Link>
       </div>
 
-      <SessionMeta session={session} onSave={saveMeta} saving={savingMeta} />
+      <SessionMeta
+        session={session}
+        styles={styles}
+        onSave={saveMeta}
+        saving={savingMeta}
+      />
 
       <h2 style={{ fontSize: 16, marginTop: 32, marginBottom: 12 }}>
         Beats ({session.beats.length})
@@ -348,11 +365,13 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
 
 function SessionMeta({
   session,
+  styles,
   onSave,
   saving,
 }: {
   session: SessionData
-  onSave: (patch: Partial<Pick<SessionData, 'title' | 'description'>>) => void
+  styles: StyleOption[]
+  onSave: (patch: Partial<Pick<SessionData, 'title' | 'description' | 'styleId'>>) => void
   saving: boolean
 }) {
   const [title, setTitle] = useState(session.title)
@@ -411,6 +430,47 @@ function SessionMeta({
           {saving ? 'Saving…' : 'Save'}
         </button>
       )}
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginTop: 12,
+          fontSize: 12,
+          color: 'var(--text-secondary)',
+        }}
+      >
+        <span>Style:</span>
+        <select
+          value={session.styleId ?? ''}
+          onChange={(e) => onSave({ styleId: e.target.value || null })}
+          style={{
+            fontSize: 12,
+            padding: '3px 8px',
+            border: '0.5px solid var(--border-1)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-primary)',
+            color: 'var(--text-primary)',
+            fontFamily: 'inherit',
+          }}
+        >
+          <option value="">— No style (default look) —</option>
+          {styles.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+        <Link
+          href="/styles"
+          style={{
+            fontSize: 11,
+            color: 'var(--text-tertiary)',
+            textDecoration: 'none',
+          }}
+        >
+          Manage styles →
+        </Link>
+      </div>
     </div>
   )
 }
