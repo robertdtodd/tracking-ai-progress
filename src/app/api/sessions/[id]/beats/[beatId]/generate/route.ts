@@ -1,9 +1,39 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { generateChartSlide, generateDiagram, generateTextSlide } from '@/lib/claude'
+import {
+  generateChartSlide,
+  generateDiagram,
+  generateTextSlide,
+  type PriorSequenceBeat,
+} from '@/lib/claude'
 import { getAllArticles } from '@/lib/getAllArticles'
 
 export const maxDuration = 120
+
+type GeneratedJson = {
+  body?: string
+  html?: string
+  title?: string
+  chartType?: string
+  data?: unknown
+}
+
+function extractPriorBody(slideType: string | null, gen: GeneratedJson | null): string | null {
+  if (!gen) return null
+  if (slideType === 'text' && typeof gen.body === 'string') return gen.body
+  if (slideType === 'chart' && gen.chartType) {
+    const dataLine = Array.isArray(gen.data)
+      ? (gen.data as Array<{ label: string; value: number }>)
+          .map((d) => `${d.label}: ${d.value}`)
+          .join(', ')
+      : ''
+    return `${gen.chartType} chart "${gen.title ?? ''}": ${dataLine}`
+  }
+  if (slideType === 'diagram') {
+    return '(diagram — visual content not transcribable)'
+  }
+  return null
+}
 
 export async function POST(
   _req: Request,
@@ -32,11 +62,38 @@ export async function POST(
     )
   }
 
+  let priorBeats: PriorSequenceBeat[] = []
+  if (beat.sequenceId) {
+    const earlier = await prisma.beat.findMany({
+      where: {
+        sessionId: beat.sessionId,
+        sequenceId: beat.sequenceId,
+        position: { lt: beat.position },
+      },
+      orderBy: { position: 'asc' },
+      select: {
+        position: true,
+        title: true,
+        outline: true,
+        slideType: true,
+        generated: true,
+      },
+    })
+    priorBeats = earlier
+      .map((b) => ({
+        position: b.position,
+        title: b.title,
+        outline: b.outline,
+        body: extractPriorBody(b.slideType, b.generated as GeneratedJson | null),
+      }))
+      .filter((b) => b.outline !== null || b.body !== null)
+  }
+
   let generated: unknown
   let resolvedTitle: string | null = beat.title
 
   if (beat.slideType === 'diagram') {
-    const html = await generateDiagram(beat.outline)
+    const html = await generateDiagram(beat.outline, priorBeats)
     generated = { html }
   } else if (beat.slideType === 'text') {
     const allArticles = beat.bundle ? await getAllArticles() : undefined
@@ -47,6 +104,7 @@ export async function POST(
       bundleContent: beat.bundle?.generatedContent,
       articleTitles: beat.bundle?.articleTitles,
       allArticles,
+      priorBeats,
     })
     generated = { body: result.body }
     if (!resolvedTitle && result.title) resolvedTitle = result.title
@@ -66,6 +124,7 @@ export async function POST(
       bundleContent: beat.bundle?.generatedContent,
       articleTitles: beat.bundle?.articleTitles,
       allArticles,
+      priorBeats,
     })
     generated = {
       chartType: result.chartType,

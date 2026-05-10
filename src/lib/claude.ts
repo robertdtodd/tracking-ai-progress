@@ -268,6 +268,13 @@ Respond with your answer directly — no special formatting tags required.`
   return block.type === 'text' ? block.text.trim() : ''
 }
 
+export type PriorSequenceBeat = {
+  position: number
+  title: string | null
+  outline: string | null
+  body: string | null
+}
+
 export type TextSlideContext = {
   courseName?: string
   sessionTitle?: string
@@ -275,6 +282,24 @@ export type TextSlideContext = {
   bundleContent?: string
   articleTitles?: string[]
   allArticles?: Article[]
+  priorBeats?: PriorSequenceBeat[]
+}
+
+function formatPriorBeats(priorBeats: PriorSequenceBeat[] | undefined): string | null {
+  if (!priorBeats || priorBeats.length === 0) return null
+  const blocks = priorBeats
+    .map((b, i) => {
+      const title = b.title?.trim() || '(untitled)'
+      const outline = b.outline?.trim() || null
+      const body = b.body?.trim() || null
+      const lines = [`Earlier slide ${i + 1} — "${title}"`]
+      if (outline) lines.push(`Description (author's intent): ${outline}`)
+      if (body) lines.push(`Generated content:\n${body}`)
+      else lines.push('(not yet generated)')
+      return lines.join('\n')
+    })
+    .join('\n\n')
+  return `THIS SLIDE IS PART OF A SEQUENCE. Earlier slides have established the following — build on them, hand off naturally, and do not repeat:\n\n${blocks}`
 }
 
 export async function generateTextSlide(
@@ -292,6 +317,8 @@ export async function generateTextSlide(
   if (context.bundleContent) {
     contextParts.push(`Lesson content for grounding:\n${context.bundleContent}`)
   }
+  const priorBlock = formatPriorBeats(context.priorBeats)
+  if (priorBlock) contextParts.push(priorBlock)
   const contextBlock = contextParts.length ? contextParts.join('\n\n') : '(no additional context)'
 
   // Stable persona/voice/format block — cached for cost efficiency across slide generations.
@@ -354,6 +381,8 @@ export async function generateChartSlide(
   if (context.bundleContent) {
     contextParts.push(`Lesson content for grounding:\n${context.bundleContent}`)
   }
+  const priorBlock = formatPriorBeats(context.priorBeats)
+  if (priorBlock) contextParts.push(priorBlock)
   const contextBlock = contextParts.length ? contextParts.join('\n\n') : '(no additional context)'
 
   const personaBlock = `You are generating a single chart slide for a classroom presentation.
@@ -474,7 +503,10 @@ ${outline}`
   return last && last.type === 'text' ? last.text.trim() : ''
 }
 
-export async function generateDiagram(userPrompt: string): Promise<string> {
+export async function generateDiagram(
+  userPrompt: string,
+  priorBeats?: PriorSequenceBeat[],
+): Promise<string> {
   const system = `You are generating a single self-contained HTML document that will render as a visual slide in a classroom presentation.
 
 Requirements:
@@ -488,10 +520,13 @@ Requirements:
 - Inline <script> is allowed only if needed for an animation or interaction that CSS alone can't do. Never use fetch, XMLHttpRequest, localStorage, cookies, or any DOM API that reaches outside the document.
 - Prefer clarity over decoration. A teacher is showing this to students — it should teach something at a glance.`
 
+  const priorBlock = formatPriorBeats(priorBeats)
+  const fullSystem = priorBlock ? `${system}\n\n${priorBlock}` : system
+
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 8000,
-    system,
+    system: fullSystem,
     messages: [{ role: 'user', content: userPrompt }],
   })
 

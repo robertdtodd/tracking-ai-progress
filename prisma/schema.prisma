@@ -94,9 +94,12 @@ model Beat {
   expandedBundleId String?
   expandedBundle   Bundle?    @relation("BeatExpandedBundle", fields: [expandedBundleId], references: [id], onDelete: SetNull)
   speakerNotes String?    @db.Text
+  sequenceId   String?
   messages     BeatMessage[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+
+  @@index([sessionId, sequenceId])
 }
 
 model BeatMessage {

@@ -31,6 +31,9 @@ export async function PATCH(
   if (typeof body.speakerNotes === 'string' || body.speakerNotes === null) {
     data.speakerNotes = body.speakerNotes
   }
+  if (typeof body.sequenceId === 'string' || body.sequenceId === null) {
+    data.sequenceId = body.sequenceId
+  }
   if (body.generated !== undefined) {
     data.generated = body.generated
     data.generatedAt = body.generated ? new Date() : null

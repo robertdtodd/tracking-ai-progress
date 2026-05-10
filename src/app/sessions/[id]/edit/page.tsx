@@ -45,6 +45,7 @@ type Beat = {
   sectionKey: string | null
   highlightId: string | null
   speakerNotes: string | null
+  sequenceId: string | null
   bundle: BundleRef | null
   highlight: HighlightRef | null
   expandedBundleId: string | null
@@ -144,6 +145,39 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     })
+    fetchSession()
+  }
+
+  async function toggleSequenceLink(beatId: string) {
+    if (!session) return
+    const idx = session.beats.findIndex((b) => b.id === beatId)
+    if (idx <= 0) return
+    const beat = session.beats[idx]
+    const prev = session.beats[idx - 1]
+    const linkedNow = beat.sequenceId !== null && beat.sequenceId === prev.sequenceId
+
+    if (linkedNow) {
+      await fetch(`/api/sessions/${params.id}/beats/${beatId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sequenceId: null }),
+      })
+    } else {
+      let id = prev.sequenceId
+      if (!id) {
+        id = crypto.randomUUID()
+        await fetch(`/api/sessions/${params.id}/beats/${prev.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sequenceId: id }),
+        })
+      }
+      await fetch(`/api/sessions/${params.id}/beats/${beatId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sequenceId: id }),
+      })
+    }
     fetchSession()
   }
 
@@ -281,22 +315,30 @@ export default function SessionEditor({ params }: { params: { id: string } }) {
       </h2>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {session.beats.map((beat, i) => (
-          <BeatCard
-            key={beat.id}
-            beat={beat}
-            index={i}
-            total={session.beats.length}
-            bundles={session.course.bundles}
-            courseId={session.course.id}
-            onUpdate={(patch) => updateBeat(beat.id, patch)}
-            onDelete={() => deleteBeat(beat.id)}
-            onMove={(dir) => moveBeat(beat.id, dir)}
-            onGenerate={() => generateBeat(beat.id)}
-            onExpandOutline={() => expandOutline(beat.id)}
-            onExpand={() => expandBeat(beat.id)}
-          />
-        ))}
+        {session.beats.map((beat, i) => {
+          const prev = i > 0 ? session.beats[i - 1] : null
+          const linkedWithPrev =
+            !!prev && !!beat.sequenceId && beat.sequenceId === prev.sequenceId
+          return (
+            <BeatCard
+              key={beat.id}
+              beat={beat}
+              index={i}
+              total={session.beats.length}
+              bundles={session.course.bundles}
+              courseId={session.course.id}
+              isFirst={i === 0}
+              linkedWithPrev={linkedWithPrev}
+              onUpdate={(patch) => updateBeat(beat.id, patch)}
+              onDelete={() => deleteBeat(beat.id)}
+              onMove={(dir) => moveBeat(beat.id, dir)}
+              onGenerate={() => generateBeat(beat.id)}
+              onExpandOutline={() => expandOutline(beat.id)}
+              onExpand={() => expandBeat(beat.id)}
+              onToggleSequenceLink={() => toggleSequenceLink(beat.id)}
+            />
+          )
+        })}
       </div>
 
       <AddBeat bundles={session.course.bundles} onAdd={addBeat} />
@@ -379,24 +421,30 @@ function BeatCard({
   total,
   bundles,
   courseId,
+  isFirst,
+  linkedWithPrev,
   onUpdate,
   onDelete,
   onMove,
   onGenerate,
   onExpandOutline,
   onExpand,
+  onToggleSequenceLink,
 }: {
   beat: Beat
   index: number
   total: number
   bundles: SessionData['course']['bundles']
   courseId: string
+  isFirst: boolean
+  linkedWithPrev: boolean
   onUpdate: (patch: Record<string, unknown>) => void
   onDelete: () => void
   onMove: (dir: -1 | 1) => void
   onGenerate: () => void
   onExpandOutline: () => Promise<string | null>
   onExpand: () => Promise<{ id: string; title: string } | null>
+  onToggleSequenceLink: () => void
 }) {
   const [generating, setGenerating] = useState(false)
 
@@ -406,10 +454,12 @@ function BeatCard({
     setGenerating(false)
   }
 
+  const inSequence = beat.sequenceId !== null
   return (
     <div
       style={{
         border: '0.5px solid var(--border-1)',
+        borderLeft: inSequence ? '3px solid var(--border-accent)' : '0.5px solid var(--border-1)',
         borderRadius: 'var(--radius-lg)',
         padding: 16,
         background: 'var(--bg-primary)',
@@ -445,10 +495,13 @@ function BeatCard({
           beat={beat}
           bundles={bundles}
           courseId={courseId}
+          isFirst={isFirst}
+          linkedWithPrev={linkedWithPrev}
           onUpdate={onUpdate}
           onGenerate={runGenerate}
           onExpandOutline={onExpandOutline}
           onExpand={onExpand}
+          onToggleSequenceLink={onToggleSequenceLink}
           generating={generating}
         />
       )}
@@ -479,19 +532,25 @@ function SlideBeatEditor({
   beat,
   bundles,
   courseId,
+  isFirst,
+  linkedWithPrev,
   onUpdate,
   onGenerate,
   onExpandOutline,
   onExpand,
+  onToggleSequenceLink,
   generating,
 }: {
   beat: Beat
   bundles: SessionData['course']['bundles']
   courseId: string
+  isFirst: boolean
+  linkedWithPrev: boolean
   onUpdate: (patch: Record<string, unknown>) => void
   onGenerate: () => void
   onExpandOutline: () => Promise<string | null>
   onExpand: () => Promise<{ id: string; title: string } | null>
+  onToggleSequenceLink: () => void
   generating: boolean
 }) {
   const [title, setTitle] = useState(beat.title ?? '')
@@ -527,7 +586,7 @@ function SlideBeatEditor({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         {(['text', 'diagram', 'chart'] as SlideType[]).map((t) => (
           <button
             key={t}
@@ -544,6 +603,32 @@ function SlideBeatEditor({
             {t}
           </button>
         ))}
+        <div style={{ flex: 1 }} />
+        <label
+          style={{
+            fontSize: 11,
+            color: isFirst ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            cursor: isFirst ? 'not-allowed' : 'pointer',
+          }}
+          title={
+            isFirst
+              ? 'The first beat in a session has no beat above it'
+              : linkedWithPrev
+                ? 'This slide builds on the slide above. Untoggle to make it standalone.'
+                : 'Group this slide with the one above so generation has prior context.'
+          }
+        >
+          <input
+            type="checkbox"
+            checked={linkedWithPrev}
+            disabled={isFirst}
+            onChange={onToggleSequenceLink}
+          />
+          ↳ continues sequence above
+        </label>
       </div>
       <input
         value={title}
